@@ -72,6 +72,7 @@ data class FormProduit(
     val categorieId: String? = null,
     val uniteId: String? = null,
     val prix: String = "",
+    val prixGros: String = "",
     val seuil: String = "",
     val photo: String? = null,
     val actif: Boolean = true,
@@ -124,6 +125,7 @@ class ProduitFormViewModel(
                         categorieId = p.typeProduitId,
                         uniteId = p.uniteId,
                         prix = p.prixVente.toString(),
+                        prixGros = p.prixVenteGros?.toString().orEmpty(),
                         seuil = if (p.seuilAlerteMilli == 0L) "" else Quantite.formater(p.seuilAlerteMilli),
                         photo = p.photoChemin,
                         actif = p.actif,
@@ -171,12 +173,15 @@ class ProduitFormViewModel(
         val f = form
         val unite = unites.value.firstOrNull { it.id == f.uniteId }
         val prix = Montant.parser(f.prix)
+        // Vide = pas de vente en gros pour ce produit
+        val prixGros = if (f.prixGros.isBlank()) null else Montant.parser(f.prixGros)
         val seuil = Quantite.parser(f.seuil, unite?.decimale ?: false)
         erreur = when {
             f.photo == null -> "Ajoutez une photo du produit."
             f.categorieId == null -> "Choisissez une catégorie."
             unite == null -> "Choisissez une unité."
-            prix == null -> "Prix de vente invalide (nombre entier en Ariary)."
+            prix == null -> "Prix de vente au détail invalide (nombre entier en Ariary)."
+            f.prixGros.isNotBlank() && prixGros == null -> "Prix de vente en gros invalide (nombre entier en Ariary)."
             seuil == null -> if (unite.decimale) "Seuil d'alerte invalide." else "Le seuil d'alerte doit être un nombre entier pour l'unité « ${unite.nom} »."
             else -> null
         }
@@ -194,6 +199,7 @@ class ProduitFormViewModel(
                         categorieId = f.categorieId,
                         uniteId = f.uniteId,
                         prixVente = prix,
+                        prixVenteGros = prixGros,
                         seuilAlerteMilli = seuil,
                         photoChemin = f.photo,
                         actif = f.actif,
@@ -341,7 +347,15 @@ fun ProduitFormScreen(
 
             ChampTexte(
                 f.prix, { v -> vm.modifier { copy(prix = v.filter { it.isDigit() }) } },
-                "Prix de vente (Ar) par ${unite?.symbole ?: "unité"}", largeur, KeyboardType.Number,
+                "Prix de vente au détail (Ar) par ${unite?.symbole ?: "unité"}", largeur, KeyboardType.Number,
+            )
+            ChampTexte(
+                f.prixGros, { v -> vm.modifier { copy(prixGros = v.filter { it.isDigit() }) } },
+                "Prix de vente en gros (Ar) par ${unite?.symbole ?: "unité"} — facultatif", largeur, KeyboardType.Number,
+            )
+            Text(
+                "Sans prix de gros, le produit ne pourra pas être vendu en gros.",
+                style = MaterialTheme.typography.bodySmall,
             )
             ChampTexte(
                 f.seuil, { v -> vm.modifier { copy(seuil = v) } },

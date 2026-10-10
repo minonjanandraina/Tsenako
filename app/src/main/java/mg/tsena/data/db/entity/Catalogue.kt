@@ -58,8 +58,10 @@ data class ProduitEntity(
     val nom: String,
     @ColumnInfo(name = "type_produit_id") val typeProduitId: String,
     @ColumnInfo(name = "unite_id") val uniteId: String,
-    /** Ariary */
+    /** Prix au détail, Ariary */
     @ColumnInfo(name = "prix_vente") val prixVente: Long,
+    /** Prix en gros, Ariary ; null = produit non vendu en gros (RG-P9) */
+    @ColumnInfo(name = "prix_vente_gros") val prixVenteGros: Long? = null,
     @ColumnInfo(name = "seuil_alerte_milli") val seuilAlerteMilli: Long = 0,
     /** Chemin relatif au dossier photos (ex. produits/<uuid>.jpg), pour rester valide après restauration */
     @ColumnInfo(name = "photo_chemin") val photoChemin: String,

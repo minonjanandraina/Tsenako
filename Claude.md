@@ -61,7 +61,7 @@ exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jama
 - **type_produit** : nom, parent_id (hiérarchie de catégories)
 - **unite** : nom, symbole, decimale (pièce, kg, litre, sac, carton… pré-remplies à la création de la base)
 - **produit** : code (unique, auto `P00001`), code_barre (unique, facultatif), nom, type_produit_id (**obligatoire**),
-  unite_id, prix_vente (Ar), seuil_alerte_milli, photo_chemin (**obligatoire**, relatif au dossier photos), actif
+  unite_id, prix_vente (Ar, détail), prix_vente_gros (Ar, facultatif), seuil_alerte_milli, photo_chemin (**obligatoire**, relatif au dossier photos), actif
 - **conversion_unite** : produit_id, unite_source_id, unite_cible_id, facteur (ex. 1 carton = 24 pièces)
 
 ### 4.2 Stocks
@@ -87,11 +87,11 @@ exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jama
 
 ### 4.5 Points de vente
 - **point_vente** : nom, adresse, depot_id (dépôt de sortie par défaut), actif
-- **prix_point_vente** : point_vente_id, produit_id, prix (surcharge optionnelle du prix produit)
-- **client** : nom, téléphone, plafond_credit (optionnel)
-- **vente** : numero, point_vente_id, client_id (nullable), caisse_session_id, date, total_brut, remise, total_net,
-  statut (`VALIDEE`, `ANNULEE`), type_paiement (`COMPTANT`, `CREDIT`, `MIXTE`)
-- **ligne_vente** : vente_id, produit_id, quantite, prix_unitaire, remise, cout_unitaire (figé à la vente)
+- **prix_point_vente** : point_vente_id, produit_id, prix_detail, prix_gros (surcharges optionnelles des prix produit)
+- **client** : nom, telephone (normalisé, unique), adresse (facultatif), plafond_credit (facultatif)
+- **vente** : numero, point_vente_id, type_vente (`DETAIL`, `GROS`), client_id (nullable, **obligatoire en gros**),
+  caisse_session_id, date, total_brut, remise, total_net, statut (`VALIDEE`, `ANNULEE`), type_paiement (`COMPTANT`, `CREDIT`, `MIXTE`)
+- **ligne_vente** : vente_id, produit_id, quantite, prix_unitaire (détail ou gros selon la vente), remise, cout_unitaire (figé à la vente)
 - **paiement_vente** : vente_id, mode (`ESPECES`, `MOBILE_MONEY`, `CARTE`, `CREDIT`), montant, reference
 - **retour_vente** : vente_id, date, motif + lignes
 
@@ -139,6 +139,8 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 - RG-P7 : Catégories hiérarchiques : nom unique au même niveau ; une catégorie ne peut pas être placée
   dans elle-même ou dans une de ses sous-catégories.
 - RG-P8 : Une quantité décimale n'est acceptée que si l'unité l'autorise (kg, litre…).
+- RG-P9 : Le prix de vente au détail est obligatoire ; le **prix de vente en gros** est facultatif.
+  Un produit sans prix de gros ne peut pas être ajouté à une vente en gros.
 
 ### 5.2 Lieux
 - RG-L1 : Un point de vente vend depuis un seul dépôt (`point_vente.depot_id`). À sa création, si aucun
@@ -169,12 +171,19 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 - RG-T4 : Le transfert se fait au CMUP du dépôt source ; il n'a **pas d'impact sur le résultat**.
 
 ### 5.6 Ventes
-- RG-V1 : Prix appliqué = `prix_point_vente` s'il existe, sinon `produit.prix_vente`.
+- RG-V0 : Au début de chaque vente, le vendeur choisit le type : **Détail** (par défaut) ou **Gros**.
+  Le type ne change plus une fois la première ligne ajoutée.
+- RG-V1 : Prix appliqué selon le type de vente : détail = `prix_point_vente.prix_detail` sinon `produit.prix_vente` ;
+  gros = `prix_point_vente.prix_gros` sinon `produit.prix_vente_gros`.
 - RG-V2 : Une vente nécessite une session de caisse **ouverte** sur le point de vente.
 - RG-V3 : Le coût unitaire (CMUP) est **figé** sur la ligne au moment de la vente (calcul de marge).
 - RG-V4 : Vente à crédit uniquement pour un client identifié, dans la limite de son plafond.
 - RG-V5 : Remise au-delà d'un seuil ⇒ validation par un rôle gérant/propriétaire.
 - RG-V6 : Annulation d'une vente = mouvements de stock inverses + écritures inverses (jamais de suppression).
+- RG-V7 : **Vente en gros ⇒ client obligatoire**, enregistré avec son **numéro de téléphone**. Le client
+  existant est retrouvé par son téléphone ; sinon il est créé depuis l'écran de vente (nom + téléphone).
+- RG-V8 : Téléphone client : numéro malgache valide (10 chiffres commençant par 0, ou +261 suivi de 9 chiffres),
+  enregistré au format normalisé `+261XXXXXXXXX`, unique par client.
 
 ### 5.7 Caisse
 - RG-C1 : Une seule session ouverte par caisse à la fois.
@@ -251,8 +260,8 @@ Schémas d'écritures types (PCG 2005) :
 | **S1** | Référentiel : catégories, produits avec photo (caméra/galerie), unités, dépôts, points de vente | Catalogue produits illustré |
 | **S2** | Stocks : mouvements, CMUP, consultation par dépôt, alertes, inventaire | Suivi de stock multi-dépôts |
 | **S3** | Fournisseurs, commandes, réceptions, transferts inter-dépôts | Cycle d'approvisionnement complet |
-| **S4** | Caisse (sessions, ouverture/clôture) + Ventes (POS, paiements, retours) | Vente en boutique fonctionnelle |
-| **S5** | Charges & dépenses, paiements fournisseurs, crédits clients | Suivi des sorties d'argent |
+| **S4** | Caisse (sessions, ouverture/clôture) + Ventes **détail / gros** (POS, paiements, retours) + fiches clients (téléphone obligatoire en gros) | Vente en boutique fonctionnelle |
+| **S5** | Charges & dépenses, paiements fournisseurs, crédits et encaissements clients | Suivi des sorties d'argent |
 | **S6** | Comptabilité : plan comptable PCG 2005, génération automatique des écritures, journaux | Écritures en partie double |
 | **S7** | États financiers PCG 2005 (bilan, compte de résultat, flux de trésorerie), tableaux de bord, rapports (marges, ventes, stock) | Reporting |
 | **S8** | Stabilisation, tests terrain, performance, test de restauration, déploiement | Version 1.0 |
@@ -308,4 +317,5 @@ app/src/main/java/mg/tsena/
   blocage 30 s), rôles et permissions, gestion des utilisateurs, sauvegarde WhatsApp et restauration.
 - **S1** (code écrit, non compilé) : catégories hiérarchiques, unités, produits avec photo (appareil photo
   ou galerie, redimensionnée 1024 px, JPEG 80 %), recherche et filtre par catégorie, dépôts et points de vente.
+  Prix de vente en gros (facultatif) sur le produit.
   Reporté : conversion_unite (S3), prix_point_vente et rattachement vendeur ↔ point de vente (S4).

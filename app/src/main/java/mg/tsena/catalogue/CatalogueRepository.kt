@@ -23,6 +23,7 @@ data class SaisieProduit(
     val categorieId: String?,
     val uniteId: String?,
     val prixVente: Long,
+    val prixVenteGros: Long?,
     val seuilAlerteMilli: Long,
     val photoChemin: String?,
     val actif: Boolean,
@@ -121,6 +122,9 @@ class CatalogueRepository(
         val photo = saisie.photoChemin?.takeIf { it.isNotBlank() && photos.fichier(it).exists() }
             ?: throw RegleMetierException("La photo du produit est obligatoire.")
         if (saisie.prixVente < 0) throw RegleMetierException("Le prix de vente ne peut pas être négatif.")
+        if (saisie.prixVenteGros != null && saisie.prixVenteGros < 0) {
+            throw RegleMetierException("Le prix de vente en gros ne peut pas être négatif.")
+        }
         if (saisie.seuilAlerteMilli < 0) throw RegleMetierException("Le seuil d'alerte ne peut pas être négatif.")
 
         var ancienneSiRemplacee: String? = null
@@ -144,6 +148,7 @@ class CatalogueRepository(
                     typeProduitId = categorieId,
                     uniteId = uniteId,
                     prixVente = saisie.prixVente,
+                    prixVenteGros = saisie.prixVenteGros,
                     seuilAlerteMilli = saisie.seuilAlerteMilli,
                     photoChemin = photo,
                     createdBy = auteur.id,
@@ -161,6 +166,7 @@ class CatalogueRepository(
                         typeProduitId = categorieId,
                         uniteId = uniteId,
                         prixVente = saisie.prixVente,
+                        prixVenteGros = saisie.prixVenteGros,
                         seuilAlerteMilli = saisie.seuilAlerteMilli,
                         photoChemin = photo,
                         actif = saisie.actif,

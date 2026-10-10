@@ -140,7 +140,14 @@ fun ProduitsScreen(
                     ListItem(
                         headlineContent = { Text(p.produit.nom) },
                         supportingContent = {
-                            Text("${p.produit.code} · ${p.categorieNom}" + if (p.produit.actif) "" else " · Inactif")
+                            Text(
+                                listOfNotNull(
+                                    p.produit.code,
+                                    p.categorieNom,
+                                    p.produit.prixVenteGros?.let { "Gros : ${Montant.formater(it)}" },
+                                    if (p.produit.actif) null else "Inactif",
+                                ).joinToString(" · ")
+                            )
                         },
                         leadingContent = { PhotoProduit(vm.fichierPhoto(p.produit.photoChemin), Modifier.size(56.dp)) },
                         trailingContent = { Text("${Montant.formater(p.produit.prixVente)} / ${p.uniteSymbole}") },
