@@ -88,7 +88,7 @@ exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jama
 ### 4.5 Points de vente
 - **point_vente** : nom, adresse, depot_id (dépôt de sortie par défaut), actif
 - **prix_point_vente** : point_vente_id, produit_id, prix_detail, prix_gros (surcharges optionnelles des prix produit)
-- **client** : nom, telephone (normalisé, unique), adresse (facultatif), plafond_credit (facultatif)
+- **client** : nom, telephone (normalisé, unique) — **uniquement ces deux informations**
 - **vente** : numero, point_vente_id, type_vente (`DETAIL`, `GROS`), client_id (nullable, **obligatoire en gros**),
   caisse_session_id, date, total_brut, remise, total_net, statut (`VALIDEE`, `ANNULEE`), type_paiement (`COMPTANT`, `CREDIT`, `MIXTE`)
 - **ligne_vente** : vente_id, produit_id, quantite, prix_unitaire (détail ou gros selon la vente), remise, cout_unitaire (figé à la vente)
@@ -177,11 +177,13 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
   gros = `prix_point_vente.prix_gros` sinon `produit.prix_vente_gros`.
 - RG-V2 : Une vente nécessite une session de caisse **ouverte** sur le point de vente.
 - RG-V3 : Le coût unitaire (CMUP) est **figé** sur la ligne au moment de la vente (calcul de marge).
-- RG-V4 : Vente à crédit uniquement pour un client identifié, dans la limite de son plafond.
+- RG-V4 : Vente à crédit uniquement pour un client enregistré.
 - RG-V5 : Remise au-delà d'un seuil ⇒ validation par un rôle gérant/propriétaire.
 - RG-V6 : Annulation d'une vente = mouvements de stock inverses + écritures inverses (jamais de suppression).
-- RG-V7 : **Vente en gros ⇒ client obligatoire**, enregistré avec son **numéro de téléphone**. Le client
-  existant est retrouvé par son téléphone ; sinon il est créé depuis l'écran de vente (nom + téléphone).
+- RG-V7 : **Vente en gros réservée aux clients préenregistrés.** Le client est créé au préalable depuis
+  l'écran **Clients** (nom + numéro de téléphone, rien d'autre). À la vente en gros, le vendeur choisit un
+  client existant (recherche par nom ou téléphone) ; aucune création de client depuis l'écran de vente.
+  Sans client sélectionné, la vente en gros ne peut pas être validée.
 - RG-V8 : Téléphone client : numéro malgache valide (10 chiffres commençant par 0, ou +261 suivi de 9 chiffres),
   enregistré au format normalisé `+261XXXXXXXXX`, unique par client.
 
@@ -260,7 +262,7 @@ Schémas d'écritures types (PCG 2005) :
 | **S1** | Référentiel : catégories, produits avec photo (caméra/galerie), unités, dépôts, points de vente | Catalogue produits illustré |
 | **S2** | Stocks : mouvements, CMUP, consultation par dépôt, alertes, inventaire | Suivi de stock multi-dépôts |
 | **S3** | Fournisseurs, commandes, réceptions, transferts inter-dépôts | Cycle d'approvisionnement complet |
-| **S4** | Caisse (sessions, ouverture/clôture) + Ventes **détail / gros** (POS, paiements, retours) + fiches clients (téléphone obligatoire en gros) | Vente en boutique fonctionnelle |
+| **S4** | Caisse (sessions, ouverture/clôture) + Ventes **détail / gros** (POS, paiements, retours) + fiches clients (nom + téléphone ; gros réservé aux clients préenregistrés) | Vente en boutique fonctionnelle |
 | **S5** | Charges & dépenses, paiements fournisseurs, crédits et encaissements clients | Suivi des sorties d'argent |
 | **S6** | Comptabilité : plan comptable PCG 2005, génération automatique des écritures, journaux | Écritures en partie double |
 | **S7** | États financiers PCG 2005 (bilan, compte de résultat, flux de trésorerie), tableaux de bord, rapports (marges, ventes, stock) | Reporting |
