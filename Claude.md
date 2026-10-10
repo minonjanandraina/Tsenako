@@ -62,7 +62,8 @@ exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jama
 - **unite** : nom, symbole, decimale (pièce, kg, litre, sac, carton… pré-remplies à la création de la base)
 - **produit** : code (unique, auto `P00001`), code_barre (unique, facultatif), nom, type_produit_id (**obligatoire**),
   unite_id, prix_vente (Ar, détail), prix_vente_gros (Ar, facultatif), seuil_alerte_milli, photo_chemin (**obligatoire**, relatif au dossier photos), actif
-- **conversion_unite** : produit_id, unite_source_id, unite_cible_id, facteur (ex. 1 carton = 24 pièces)
+- **conversion_unite** (unité d'achat) : produit_id, unite_source_id, facteur_milli (millièmes de l'unité du produit
+  dans 1 unité source, ex. 1 carton = 24 pièces → 24000) ; l'unité cible est toujours celle du produit
 
 ### 4.2 Stocks
 - **depot** (salle de stockage) : nom, adresse, point_vente_id (nullable), actif
@@ -74,16 +75,19 @@ exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jama
 - **ligne_inventaire** : inventaire_id, produit_id, quantite_theorique, quantite_comptee (null = non compté), ecart
 
 ### 4.3 Fournisseurs
-- **fournisseur** : nom, téléphone, adresse, NIF, conditions de paiement (jours), actif
+- **fournisseur** : nom, téléphone (facultatif, format +261), adresse, NIF, delai_paiement_jours, actif
 - **paiement_fournisseur** : fournisseur_id, reception_id (nullable), montant, mode_paiement, caisse_session_id, date
 
 ### 4.4 Approvisionnement & transferts
-- **commande_fournisseur** : fournisseur_id, depot_id, date, statut (`BROUILLON`, `ENVOYEE`, `PARTIELLE`, `RECUE`, `ANNULEE`)
-- **ligne_commande** : commande_id, produit_id, quantite, prix_unitaire
-- **reception** : commande_id (nullable), fournisseur_id, depot_id, date, montant_total, statut_paiement
-- **ligne_reception** : reception_id, produit_id, quantite, prix_unitaire
-- **transfert** : depot_source_id, depot_destination_id, date, statut (`BROUILLON`, `EN_TRANSIT`, `RECU`, `ANNULE`)
-- **ligne_transfert** : transfert_id, produit_id, quantite_envoyee, quantite_recue
+- **commande_fournisseur** : numero (`CF-000001`), fournisseur_id, depot_id (livraison), date, note,
+  statut (`BROUILLON`, `ENVOYEE`, `PARTIELLE`, `RECUE`, `ANNULEE`)
+- **ligne_commande** : commande_id, produit_id, quantite, prix_unitaire, montant, quantite_recue (cumul des réceptions)
+- **reception** : numero (`BR-000001`), commande_id (nullable), fournisseur_id, depot_id, date, montant_total,
+  reference (n° facture / BL du fournisseur) — le statut de paiement viendra avec les paiements (S5)
+- **ligne_reception** : reception_id, produit_id, ligne_commande_id (nullable), quantite, prix_unitaire, montant
+- **transfert** : numero (`TR-000001`), depot_source_id, depot_destination_id, date, statut (`EN_TRANSIT`, `RECU`, `ANNULE`),
+  date_reception, recu_par, motif_ecart, note — créé directement à l'envoi (pas de brouillon enregistré)
+- **ligne_transfert** : transfert_id, produit_id, quantite_envoyee, quantite_recue, cout_unitaire (CMUP source à l'envoi)
 
 ### 4.5 Points de vente
 - **point_vente** : nom, adresse, depot_id (dépôt de sortie par défaut), actif
@@ -169,11 +173,22 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 - RG-A2 : Une réception peut être partielle ; la commande passe en `PARTIELLE` jusqu'à réception complète.
 - RG-A3 : Réception à crédit ⇒ dette fournisseur (compte 401) ; le solde fournisseur = réceptions − paiements.
 - RG-A4 : Un document validé ne se modifie pas ; on l'annule par un document inverse (avoir, retour).
+- RG-A5 : Seule une commande en brouillon est modifiable. Annulation possible tant que rien n'est reçu ; une
+  commande reçue en partie peut être **soldée** (le reste n'est plus attendu, statut `RECUE`). Une commande peut être
+  reçue sans avoir été marquée envoyée. Le bon est partagé au fournisseur par WhatsApp (son numéro s'il est connu).
+- RG-A6 : Une réception sur commande reprend le fournisseur et le dépôt de la commande ; le reste à recevoir est
+  proposé au prix convenu, modifiable ; un produit hors commande est accepté. Sans commande : achat direct.
+- RG-A7 : **Unités d'achat** : une quantité peut être saisie en carton, sac… ; elle est convertie dans l'unité du
+  produit (refusée si le résultat n'est pas entier pour une unité entière). Les documents sont toujours enregistrés dans
+  l'unité du produit. Le coût d'entrée en stock = montant de la ligne / quantité, arrondi à l'Ariary.
+- RG-A8 : Numéros séquentiels sans trou par type de document (`CF`, `BR`, `TR`) ; aucun document n'est supprimé.
 
 ### 5.5 Transferts
 - RG-T1 : Dépôt source ≠ dépôt destination.
 - RG-T2 : À l'envoi : sortie du dépôt source (statut `EN_TRANSIT`) ; à la réception : entrée au dépôt destination.
-- RG-T3 : Écart entre quantité envoyée et reçue ⇒ mouvement `PERTE` justifié.
+- RG-T3 : Écart entre quantité envoyée et reçue ⇒ mouvement `PERTE` justifié : la quantité envoyée entre au dépôt
+  de destination, puis le manque en sort en `PERTE` avec le motif saisi (obligatoire). Quantité reçue ≤ envoyée.
+- RG-T5 : Un transfert en transit peut être annulé : la marchandise revient au dépôt source, à son coût d'envoi.
 - RG-T4 : Le transfert se fait au CMUP du dépôt source ; il n'a **pas d'impact sur le résultat**.
 
 ### 5.6 Ventes
@@ -331,3 +346,9 @@ app/src/main/java/mg/tsena/
   d'entrée pour les achats/ventes/transferts à venir), historique des mouvements, stock initial, pertes,
   alertes de stock (accueil + écran dédié), inventaires (comptage, validation, abandon), paramètre stock négatif.
   Reporté : écriture comptable des écarts d'inventaire (S6).
+- **S3** (code écrit, non compilé localement) : fournisseurs (total des achats), unités d'achat (conversion_unite),
+  commandes fournisseurs (brouillon, envoi par WhatsApp, annulation, solde), réceptions avec ou sans commande
+  (entrée en stock au coût d'achat, CMUP, réceptions partielles), transferts inter-dépôts (envoi au CMUP source,
+  réception avec manque en perte, annulation). Numérotation CF / BR / TR. `domain/Telephone` (format RG-V8).
+  Reporté : paiements fournisseurs et solde dû (S5), retour fournisseur / annulation de réception (S5),
+  écritures comptables des achats (S6).

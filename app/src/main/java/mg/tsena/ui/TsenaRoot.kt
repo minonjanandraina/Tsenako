@@ -19,6 +19,17 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import mg.tsena.domain.Permission
+import mg.tsena.ui.appro.CommandeFormScreen
+import mg.tsena.ui.appro.CommandeScreen
+import mg.tsena.ui.appro.CommandesScreen
+import mg.tsena.ui.appro.ConversionsScreen
+import mg.tsena.ui.appro.FournisseursScreen
+import mg.tsena.ui.appro.ReceptionFormScreen
+import mg.tsena.ui.appro.ReceptionScreen
+import mg.tsena.ui.appro.ReceptionsScreen
+import mg.tsena.ui.appro.TransfertFormScreen
+import mg.tsena.ui.appro.TransfertScreen
+import mg.tsena.ui.appro.TransfertsScreen
 import mg.tsena.ui.catalogue.CategoriesScreen
 import mg.tsena.ui.catalogue.ProduitFormScreen
 import mg.tsena.ui.catalogue.ProduitsScreen
@@ -47,10 +58,26 @@ object Routes {
     const val FICHE_STOCK = "stocks/fiche/{produitId}/{depotId}"
     const val INVENTAIRES = "inventaires"
     const val INVENTAIRE = "inventaires/{id}"
+    const val FOURNISSEURS = "fournisseurs"
+    const val CONVERSIONS = "conversions"
+    const val COMMANDES = "commandes"
+    const val COMMANDE_FORM = "commande-saisie?id={id}"
+    const val COMMANDE = "commandes/{id}"
+    const val RECEPTIONS = "receptions"
+    const val RECEPTION_FORM = "reception-saisie?commandeId={commandeId}"
+    const val RECEPTION = "receptions/{id}"
+    const val TRANSFERTS = "transferts"
+    const val TRANSFERT_FORM = "transfert-saisie"
+    const val TRANSFERT = "transferts/{id}"
 
     fun produit(id: String?) = if (id == null) "produit" else "produit?id=$id"
     fun ficheStock(produitId: String, depotId: String) = "stocks/fiche/$produitId/$depotId"
     fun inventaire(id: String) = "inventaires/$id"
+    fun commandeForm(id: String?) = if (id == null) "commande-saisie" else "commande-saisie?id=$id"
+    fun commande(id: String) = "commandes/$id"
+    fun receptionForm(commandeId: String?) = if (commandeId == null) "reception-saisie" else "reception-saisie?commandeId=$commandeId"
+    fun reception(id: String) = "receptions/$id"
+    fun transfert(id: String) = "transferts/$id"
 }
 
 private val TYPES_SAUVEGARDE = arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")
@@ -147,6 +174,83 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
         }
         composable(Routes.INVENTAIRE) { entree ->
             InventaireScreen(inventaireId = entree.arguments?.getString("id").orEmpty(), onRetour = { nav.popBackStack() })
+        }
+        composable(Routes.FOURNISSEURS) { FournisseursScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.CONVERSIONS) { ConversionsScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.COMMANDES) {
+            CommandesScreen(
+                onRetour = { nav.popBackStack() },
+                onNouvelle = { nav.navigate(Routes.commandeForm(null)) },
+                onOuvrir = { id -> nav.navigate(Routes.commande(id)) },
+            )
+        }
+        composable(
+            Routes.COMMANDE_FORM,
+            arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { entree ->
+            val id = entree.arguments?.getString("id")
+            CommandeFormScreen(
+                commandeId = id,
+                onRetour = { nav.popBackStack() },
+                onEnregistree = { commandeId ->
+                    nav.popBackStack()
+                    // Création : ouvrir la fiche ; modification : la fiche est déjà dessous
+                    if (id == null) nav.navigate(Routes.commande(commandeId))
+                },
+            )
+        }
+        composable(Routes.COMMANDE) { entree ->
+            val id = entree.arguments?.getString("id").orEmpty()
+            CommandeScreen(
+                commandeId = id,
+                nomCommerce = etat.commerce.nom,
+                onRetour = { nav.popBackStack() },
+                onModifier = { nav.navigate(Routes.commandeForm(id)) },
+                onRecevoir = { nav.navigate(Routes.receptionForm(id)) },
+                onReception = { receptionId -> nav.navigate(Routes.reception(receptionId)) },
+            )
+        }
+        composable(Routes.RECEPTIONS) {
+            ReceptionsScreen(
+                onRetour = { nav.popBackStack() },
+                onNouvelle = { nav.navigate(Routes.receptionForm(null)) },
+                onOuvrir = { id -> nav.navigate(Routes.reception(id)) },
+            )
+        }
+        composable(
+            Routes.RECEPTION_FORM,
+            arguments = listOf(navArgument("commandeId") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { entree ->
+            ReceptionFormScreen(
+                commandeId = entree.arguments?.getString("commandeId"),
+                onRetour = { nav.popBackStack() },
+                onValidee = { receptionId ->
+                    nav.popBackStack()
+                    nav.navigate(Routes.reception(receptionId))
+                },
+            )
+        }
+        composable(Routes.RECEPTION) { entree ->
+            ReceptionScreen(receptionId = entree.arguments?.getString("id").orEmpty(), onRetour = { nav.popBackStack() })
+        }
+        composable(Routes.TRANSFERTS) {
+            TransfertsScreen(
+                onRetour = { nav.popBackStack() },
+                onNouveau = { nav.navigate(Routes.TRANSFERT_FORM) },
+                onOuvrir = { id -> nav.navigate(Routes.transfert(id)) },
+            )
+        }
+        composable(Routes.TRANSFERT_FORM) {
+            TransfertFormScreen(
+                onRetour = { nav.popBackStack() },
+                onEnvoye = { transfertId ->
+                    nav.popBackStack()
+                    nav.navigate(Routes.transfert(transfertId))
+                },
+            )
+        }
+        composable(Routes.TRANSFERT) { entree ->
+            TransfertScreen(transfertId = entree.arguments?.getString("id").orEmpty(), onRetour = { nav.popBackStack() })
         }
     }
 }

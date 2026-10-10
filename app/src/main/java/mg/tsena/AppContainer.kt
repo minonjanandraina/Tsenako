@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.CreationExtras
+import mg.tsena.appro.ApproRepository
 import mg.tsena.auth.AuditLogger
 import mg.tsena.auth.AuthRepository
 import mg.tsena.auth.SessionManager
@@ -25,6 +26,7 @@ class AppContainer(context: Context) {
     val catalogueRepository = CatalogueRepository(database, session, audit, photoManager)
     val lieuRepository = LieuRepository(database, session, audit)
     val stockRepository = StockRepository(database, session, audit)
+    val approRepository = ApproRepository(database, session, audit, stockRepository)
 }
 
 class TsenaApp : Application() {

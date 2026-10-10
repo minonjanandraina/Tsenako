@@ -54,6 +54,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import mg.tsena.R
+import mg.tsena.appro.ApproRepository
 import mg.tsena.auth.AuthRepository
 import mg.tsena.auth.UtilisateurConnecte
 import mg.tsena.backup.BackupManager
@@ -70,9 +71,12 @@ class HomeViewModel(
     private val auth: AuthRepository,
     private val backup: BackupManager,
     stock: StockRepository,
+    appro: ApproRepository,
 ) : ViewModel() {
     val derniereSauvegarde: StateFlow<Long?> = backup.derniereSauvegarde
     val nbAlertes: StateFlow<Int> = stock.observerAlertes().map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+    val nbTransfertsEnTransit: StateFlow<Int> = appro.observerNbTransfertsEnTransit()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     private val _partage = Channel<Intent>(Channel.BUFFERED)
@@ -105,7 +109,9 @@ class HomeViewModel(
 
     companion object {
         val Factory = viewModelFactory {
-            initializer { HomeViewModel(container.authRepository, container.backupManager, container.stockRepository) }
+            initializer {
+                HomeViewModel(container.authRepository, container.backupManager, container.stockRepository, container.approRepository)
+            }
         }
     }
 }
@@ -116,7 +122,6 @@ private class ModuleAVenir(val nom: String, val sprint: String, val icone: @Comp
 
 /** Modules prévus dans les sprints suivants (Claude.md §6). */
 private val MODULES_A_VENIR = listOf(
-    ModuleAVenir("Approvisionnement & transferts", "S3") { painterResource(R.drawable.ic_appro) },
     ModuleAVenir("Ventes & caisse", "S4") { rememberVectorPainter(Icons.Filled.ShoppingCart) },
     ModuleAVenir("Charges & dépenses", "S5") { painterResource(R.drawable.ic_depenses) },
     ModuleAVenir("Comptabilité", "S6") { painterResource(R.drawable.ic_comptabilite) },
@@ -213,6 +218,32 @@ fun HomeScreen(
                         },
                         modifier = Modifier.clickable { onOuvrir(Routes.ALERTES) },
                     )
+                }
+            }
+
+            if (utilisateur.peut(Permission.GERER_APPRO)) {
+                val nbEnTransit by vm.nbTransfertsEnTransit.collectAsStateWithLifecycle()
+                Text("Approvisionnement", style = MaterialTheme.typography.titleMedium)
+                Card(Modifier.fillMaxWidth()) {
+                    EntreeMenu("Commandes", "Commander aux fournisseurs", painterResource(R.drawable.ic_commande)) {
+                        onOuvrir(Routes.COMMANDES)
+                    }
+                    EntreeMenu("Réceptions", "Entrées de marchandise, achats", painterResource(R.drawable.ic_reception)) {
+                        onOuvrir(Routes.RECEPTIONS)
+                    }
+                    EntreeMenu(
+                        "Transferts entre dépôts",
+                        if (nbEnTransit == 0) "Déplacer du stock" else "$nbEnTransit transfert(s) en transit à réceptionner",
+                        painterResource(R.drawable.ic_transfert),
+                    ) {
+                        onOuvrir(Routes.TRANSFERTS)
+                    }
+                    EntreeMenu("Fournisseurs", "Coordonnées, total des achats", painterResource(R.drawable.ic_appro)) {
+                        onOuvrir(Routes.FOURNISSEURS)
+                    }
+                    EntreeMenu("Unités d'achat", "Carton, sac… convertis en unités de stock", painterResource(R.drawable.ic_unites)) {
+                        onOuvrir(Routes.CONVERSIONS)
+                    }
                 }
             }
 
