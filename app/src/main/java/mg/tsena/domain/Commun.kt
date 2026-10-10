@@ -6,7 +6,10 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /** Violation d'une règle métier ; le message est affiché tel quel à l'utilisateur. */
-class RegleMetierException(message: String) : Exception(message)
+open class RegleMetierException(message: String) : Exception(message)
+
+/** Action possible seulement avec le code PIN d'un utilisateur ayant la permission (ex. remise au-delà du seuil). */
+class AutorisationRequiseException(message: String) : RegleMetierException(message)
 
 fun nouvelId(): String = UUID.randomUUID().toString()
 

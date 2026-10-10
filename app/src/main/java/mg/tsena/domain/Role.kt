@@ -14,6 +14,10 @@ enum class Permission {
     GERER_DEPENSES,
     VOIR_COMPTABILITE,
     VOIR_TOUS_POINTS_VENTE,
+    /** RG-V5 : remise au-delà du seuil du commerce */
+    ACCORDER_REMISE,
+    /** RG-V6 : annulation d'une vente */
+    ANNULER_VENTE,
     /** Paramètres du commerce (stock négatif…) : propriétaire uniquement */
     PARAMETRER_COMMERCE,
 }
@@ -32,6 +36,8 @@ enum class Role(val libelle: String, val permissions: Set<Permission>) {
             Permission.GERER_DEPENSES,
             Permission.VOIR_COMPTABILITE,
             Permission.VOIR_TOUS_POINTS_VENTE,
+            Permission.ACCORDER_REMISE,
+            Permission.ANNULER_VENTE,
         ),
     ),
     VENDEUR("Vendeur", setOf(Permission.VENDRE, Permission.GERER_CAISSE)),

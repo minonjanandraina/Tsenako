@@ -49,16 +49,27 @@ import mg.tsena.auth.AuthRepository
 import mg.tsena.auth.PinHasher
 import mg.tsena.auth.UtilisateurConnecte
 import mg.tsena.container
+import mg.tsena.data.db.entity.PointVenteAvecDepot
 import mg.tsena.data.db.entity.UtilisateurAvecRoles
 import mg.tsena.data.db.entity.rolesActifs
 import mg.tsena.domain.RegleMetierException
 import mg.tsena.domain.Role
 import mg.tsena.ui.common.ChampPin
 import mg.tsena.ui.common.ChampTexte
+import mg.tsena.ui.common.Selecteur
+import mg.tsena.lieux.LieuRepository
+import kotlinx.coroutines.flow.map
 
-class UsersViewModel(private val auth: AuthRepository) : ViewModel() {
+class UsersViewModel(private val auth: AuthRepository, lieux: LieuRepository) : ViewModel() {
     val utilisateurs: StateFlow<List<UtilisateurAvecRoles>> = auth.observerTousUtilisateurs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val pointsVente: StateFlow<List<PointVenteAvecDepot>> = lieux.observerPointsVente()
+        .map { liste -> liste.filter { it.pointVente.actif } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Vendeur dont on change le point de vente (RG-X2) */
+    var rattachement by mutableStateOf<UtilisateurAvecRoles?>(null)
+        private set
 
     var formulaireOuvert by mutableStateOf(false)
         private set
@@ -76,17 +87,40 @@ class UsersViewModel(private val auth: AuthRepository) : ViewModel() {
         formulaireOuvert = false
     }
 
-    fun creer(nom: String, telephone: String, role: Role, pin: String, confirmation: String) {
+    fun ouvrirRattachement(u: UtilisateurAvecRoles) {
+        erreurFormulaire = null
+        rattachement = u
+    }
+
+    fun fermerRattachement() {
+        rattachement = null
+    }
+
+    fun rattacher(pointVenteId: String?) {
+        val u = rattachement ?: return
+        viewModelScope.launch {
+            try {
+                auth.modifierPointVente(u.utilisateur.id, pointVenteId)
+                rattachement = null
+                message = "Point de vente modifié : pris en compte à la prochaine connexion de ${u.utilisateur.nom}."
+            } catch (e: RegleMetierException) {
+                erreurFormulaire = e.message
+            }
+        }
+    }
+
+    fun creer(nom: String, telephone: String, role: Role, pin: String, confirmation: String, pointVenteId: String?) {
         erreurFormulaire = when {
             nom.isBlank() -> "Le nom est obligatoire."
             !PinHasher.formatValide(pin) -> "Le code PIN doit contenir 4 à 6 chiffres."
             pin != confirmation -> "Les deux codes PIN ne correspondent pas."
+            role == Role.VENDEUR && pointVenteId == null -> "Choisissez le point de vente du vendeur."
             else -> null
         }
         if (erreurFormulaire != null) return
         viewModelScope.launch {
             try {
-                auth.creerUtilisateur(nom, telephone, role, pin)
+                auth.creerUtilisateur(nom, telephone, role, pin, pointVenteId)
                 formulaireOuvert = false
             } catch (e: RegleMetierException) {
                 erreurFormulaire = e.message
@@ -111,7 +145,7 @@ class UsersViewModel(private val auth: AuthRepository) : ViewModel() {
 
     companion object {
         val Factory = viewModelFactory {
-            initializer { UsersViewModel(container.authRepository) }
+            initializer { UsersViewModel(container.authRepository, container.lieuRepository) }
         }
     }
 }
@@ -124,6 +158,7 @@ fun UsersScreen(
     vm: UsersViewModel = viewModel(factory = UsersViewModel.Factory),
 ) {
     val utilisateurs by vm.utilisateurs.collectAsStateWithLifecycle()
+    val pointsVente by vm.pointsVente.collectAsStateWithLifecycle()
     var aDesactiver by rememberSaveable { mutableStateOf<String?>(null) }
 
     Scaffold(
@@ -146,12 +181,16 @@ fun UsersScreen(
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
             items(utilisateurs, key = { it.utilisateur.id }) { u ->
                 val actif = u.utilisateur.actif
+                val vendeur = Role.VENDEUR in u.rolesActifs
+                val pointVente = u.roles.firstOrNull { it.deletedAt == null && it.pointVenteId != null }?.pointVenteId
+                    ?.let { id -> pointsVente.firstOrNull { it.pointVente.id == id }?.pointVente?.nom }
                 ListItem(
                     headlineContent = { Text(u.utilisateur.nom) },
                     supportingContent = {
                         Text(
                             u.rolesActifs.joinToString { it.libelle } +
                                 (u.utilisateur.telephone?.let { " · $it" } ?: "") +
+                                (if (vendeur) " · ${pointVente ?: "Aucun point de vente"}" else "") +
                                 (if (actif) "" else " · Désactivé")
                         )
                     },
@@ -160,13 +199,39 @@ fun UsersScreen(
                             TextButton(onClick = { aDesactiver = u.utilisateur.id }) { Text("Désactiver") }
                         }
                     },
+                    modifier = if (actif && vendeur) Modifier.clickable { vm.ouvrirRattachement(u) } else Modifier,
                 )
             }
         }
     }
 
     if (vm.formulaireOuvert) {
-        FormulaireUtilisateur(vm)
+        FormulaireUtilisateur(vm, pointsVente)
+    }
+
+    vm.rattachement?.let { u ->
+        val actuel = u.roles.firstOrNull { it.deletedAt == null && it.pointVenteId != null }?.pointVenteId
+        var choix by rememberSaveable(u.utilisateur.id) { mutableStateOf(actuel) }
+        AlertDialog(
+            onDismissRequest = vm::fermerRattachement,
+            title = { Text("Point de vente de ${u.utilisateur.nom}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Selecteur(
+                        libelle = "Point de vente",
+                        valeurAffichee = pointsVente.firstOrNull { it.pointVente.id == choix }?.pointVente?.nom.orEmpty(),
+                        options = pointsVente,
+                        texte = { it.pointVente.nom },
+                        onSelection = { choix = it.pointVente.id },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text("Le vendeur ne voit que les ventes et la caisse de ce point de vente.", style = MaterialTheme.typography.bodySmall)
+                    vm.erreurFormulaire?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { vm.rattacher(choix) }) { Text("Enregistrer") } },
+            dismissButton = { TextButton(onClick = vm::fermerRattachement) { Text("Annuler") } },
+        )
     }
 
     aDesactiver?.let { id ->
@@ -192,10 +257,11 @@ fun UsersScreen(
 }
 
 @Composable
-private fun FormulaireUtilisateur(vm: UsersViewModel) {
+private fun FormulaireUtilisateur(vm: UsersViewModel, pointsVente: List<PointVenteAvecDepot>) {
     var nom by rememberSaveable { mutableStateOf("") }
     var telephone by rememberSaveable { mutableStateOf("") }
     var role by rememberSaveable { mutableStateOf(Role.VENDEUR) }
+    var pointVenteId by rememberSaveable { mutableStateOf(pointsVente.singleOrNull()?.pointVente?.id) }
     var pin by rememberSaveable { mutableStateOf("") }
     var confirmation by rememberSaveable { mutableStateOf("") }
 
@@ -216,13 +282,23 @@ private fun FormulaireUtilisateur(vm: UsersViewModel) {
                         Text(r.libelle)
                     }
                 }
+                if (role == Role.VENDEUR) {
+                    Selecteur(
+                        libelle = "Point de vente du vendeur",
+                        valeurAffichee = pointsVente.firstOrNull { it.pointVente.id == pointVenteId }?.pointVente?.nom.orEmpty(),
+                        options = pointsVente,
+                        texte = { it.pointVente.nom },
+                        onSelection = { pointVenteId = it.pointVente.id },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 ChampPin(pin, { pin = it }, "Code PIN (4 à 6 chiffres)", Modifier.fillMaxWidth())
                 ChampPin(confirmation, { confirmation = it }, "Confirmez le code PIN", Modifier.fillMaxWidth())
                 vm.erreurFormulaire?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
-            TextButton(onClick = { vm.creer(nom, telephone, role, pin, confirmation) }) { Text("Créer") }
+            TextButton(onClick = { vm.creer(nom, telephone, role, pin, confirmation, pointVenteId) }) { Text("Créer") }
         },
         dismissButton = { TextButton(onClick = vm::fermerFormulaire) { Text("Annuler") } },
     )

@@ -14,6 +14,7 @@ import mg.tsena.catalogue.PhotoManager
 import mg.tsena.data.db.TsenaDatabase
 import mg.tsena.lieux.LieuRepository
 import mg.tsena.stock.StockRepository
+import mg.tsena.vente.VenteRepository
 
 /** Injection de dépendances manuelle : une seule instance de chaque service pour toute l'app. */
 class AppContainer(context: Context) {
@@ -27,6 +28,7 @@ class AppContainer(context: Context) {
     val lieuRepository = LieuRepository(database, session, audit)
     val stockRepository = StockRepository(database, session, audit)
     val approRepository = ApproRepository(database, session, audit, stockRepository)
+    val venteRepository = VenteRepository(database, session, audit, authRepository, stockRepository)
 }
 
 class TsenaApp : Application() {

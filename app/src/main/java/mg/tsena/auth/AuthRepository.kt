@@ -79,7 +79,8 @@ class AuthRepository(
         }
 
         echecs.remove(u.id)
-        session.ouvrir(UtilisateurConnecte(u.id, u.nom, trouve.rolesActifs))
+        val pointVente = trouve.roles.firstOrNull { it.deletedAt == null && it.pointVenteId != null }?.pointVenteId
+        session.ouvrir(UtilisateurConnecte(u.id, u.nom, trouve.rolesActifs, pointVente))
         audit.enregistrer(ActionAudit.CONNEXION)
         return ResultatConnexion.Succes
     }
@@ -89,13 +90,15 @@ class AuthRepository(
         session.fermer()
     }
 
-    suspend fun creerUtilisateur(nom: String, telephone: String?, role: Role, pin: String) {
+    /** [pointVenteId] : obligatoire pour un vendeur (RG-X2), ignoré pour les autres rôles. */
+    suspend fun creerUtilisateur(nom: String, telephone: String?, role: Role, pin: String, pointVenteId: String? = null) {
         val auteur = session.exiger(Permission.GERER_UTILISATEURS)
+        val pointVente = if (role == Role.VENDEUR) exigerPointVenteActif(pointVenteId) else null
         val utilisateur = nouvelUtilisateur(nom, telephone, pin, creePar = auteur.id)
         db.withTransaction {
             utilisateurDao.inserer(utilisateur)
             utilisateurDao.insererRole(
-                UtilisateurRoleEntity(utilisateurId = utilisateur.id, role = role, createdBy = auteur.id)
+                UtilisateurRoleEntity(utilisateurId = utilisateur.id, role = role, pointVenteId = pointVente, createdBy = auteur.id)
             )
         }
         audit.enregistrer(ActionAudit.CREATION_UTILISATEUR, "${utilisateur.nom} (${role.libelle})")
@@ -113,6 +116,41 @@ class AuthRepository(
             utilisateurDao.desactiver(utilisateurId, maintenant())
         }
         audit.enregistrer(ActionAudit.DESACTIVATION_UTILISATEUR, utilisateurId)
+    }
+
+    /** Change le point de vente d'un vendeur (RG-X2) ; pris en compte à sa prochaine connexion. */
+    suspend fun modifierPointVente(utilisateurId: String, pointVenteId: String?) {
+        session.exiger(Permission.GERER_UTILISATEURS)
+        db.withTransaction {
+            val cible = utilisateurDao.getAvecRoles(utilisateurId) ?: throw RegleMetierException("Utilisateur introuvable.")
+            val pointVente = if (Role.VENDEUR in cible.rolesActifs) exigerPointVenteActif(pointVenteId) else pointVenteId
+            utilisateurDao.modifierPointVente(utilisateurId, pointVente, maintenant())
+            audit.enregistrer(ActionAudit.MODIFICATION_POINT_VENTE_UTILISATEUR, "${cible.utilisateur.nom} : ${pointVente.orEmpty()}")
+        }
+    }
+
+    /**
+     * Autorisation ponctuelle (RG-V5) : renvoie l'utilisateur actif ayant [permission] dont le code PIN est [pin],
+     * ou null. Le code saisi est comparé à celui de chaque utilisateur autorisé.
+     */
+    suspend fun verifierAutorisation(pin: String, permission: Permission): UtilisateurConnecte? {
+        if (!PinHasher.formatValide(pin)) return null
+        val candidats = utilisateurDao.tousActifs().filter { u -> u.rolesActifs.any { permission in it.permissions } }
+        val trouve = withContext(Dispatchers.Default) {
+            candidats.firstOrNull { PinHasher.verifier(pin, it.utilisateur.pinSel, it.utilisateur.pinHash) }
+        }
+        if (trouve == null) {
+            audit.enregistrer(ActionAudit.ECHEC_AUTORISATION, permission.name)
+            return null
+        }
+        return UtilisateurConnecte(trouve.utilisateur.id, trouve.utilisateur.nom, trouve.rolesActifs)
+    }
+
+    private suspend fun exigerPointVenteActif(pointVenteId: String?): String {
+        val pv = pointVenteId?.let { db.lieuDao().getPointVente(it) }
+            ?: throw RegleMetierException("Choisissez le point de vente du vendeur.")
+        if (!pv.actif) throw RegleMetierException("Le point de vente « ${pv.nom} » est désactivé.")
+        return pv.id
     }
 
     private suspend fun nouvelUtilisateur(nom: String, telephone: String?, pin: String, creePar: String?): UtilisateurEntity {

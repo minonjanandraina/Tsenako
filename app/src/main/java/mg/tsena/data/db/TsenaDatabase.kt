@@ -7,6 +7,8 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
+import mg.tsena.data.db.dao.CaisseDao
+import mg.tsena.data.db.dao.ClientDao
 import mg.tsena.data.db.dao.CommandeDao
 import mg.tsena.data.db.dao.CommerceDao
 import mg.tsena.data.db.dao.ConversionUniteDao
@@ -14,6 +16,7 @@ import mg.tsena.data.db.dao.FournisseurDao
 import mg.tsena.data.db.dao.InventaireDao
 import mg.tsena.data.db.dao.JournalAuditDao
 import mg.tsena.data.db.dao.LieuDao
+import mg.tsena.data.db.dao.PrixPointVenteDao
 import mg.tsena.data.db.dao.ProduitDao
 import mg.tsena.data.db.dao.ReceptionDao
 import mg.tsena.data.db.dao.StockDao
@@ -21,6 +24,9 @@ import mg.tsena.data.db.dao.TransfertDao
 import mg.tsena.data.db.dao.TypeProduitDao
 import mg.tsena.data.db.dao.UniteDao
 import mg.tsena.data.db.dao.UtilisateurDao
+import mg.tsena.data.db.dao.VenteDao
+import mg.tsena.data.db.entity.CaisseEntity
+import mg.tsena.data.db.entity.ClientEntity
 import mg.tsena.data.db.entity.CommandeFournisseurEntity
 import mg.tsena.data.db.entity.CommerceEntity
 import mg.tsena.data.db.entity.ConversionUniteEntity
@@ -31,21 +37,35 @@ import mg.tsena.data.db.entity.JournalAuditEntity
 import mg.tsena.data.db.entity.LigneCommandeEntity
 import mg.tsena.data.db.entity.LigneInventaireEntity
 import mg.tsena.data.db.entity.LigneReceptionEntity
+import mg.tsena.data.db.entity.LigneRetourVenteEntity
 import mg.tsena.data.db.entity.LigneTransfertEntity
+import mg.tsena.data.db.entity.LigneVenteEntity
+import mg.tsena.data.db.entity.ModePaiement
 import mg.tsena.data.db.entity.MouvementStockEntity
+import mg.tsena.data.db.entity.OperationCaisseEntity
+import mg.tsena.data.db.entity.PaiementVenteEntity
 import mg.tsena.data.db.entity.PointVenteEntity
+import mg.tsena.data.db.entity.PrixPointVenteEntity
 import mg.tsena.data.db.entity.ProduitEntity
 import mg.tsena.data.db.entity.ReceptionEntity
+import mg.tsena.data.db.entity.RetourVenteEntity
+import mg.tsena.data.db.entity.SessionCaisseEntity
 import mg.tsena.data.db.entity.StatutCommande
 import mg.tsena.data.db.entity.StatutInventaire
+import mg.tsena.data.db.entity.StatutSession
 import mg.tsena.data.db.entity.StatutTransfert
+import mg.tsena.data.db.entity.StatutVente
 import mg.tsena.data.db.entity.StockEntity
 import mg.tsena.data.db.entity.TransfertEntity
 import mg.tsena.data.db.entity.TypeMouvement
+import mg.tsena.data.db.entity.TypeOperationCaisse
+import mg.tsena.data.db.entity.TypePaiement
 import mg.tsena.data.db.entity.TypeProduitEntity
+import mg.tsena.data.db.entity.TypeVente
 import mg.tsena.data.db.entity.UniteEntity
 import mg.tsena.data.db.entity.UtilisateurEntity
 import mg.tsena.data.db.entity.UtilisateurRoleEntity
+import mg.tsena.data.db.entity.VenteEntity
 import mg.tsena.domain.Role
 import mg.tsena.domain.maintenant
 import mg.tsena.domain.nouvelId
@@ -80,6 +100,42 @@ class Converters {
 
     @TypeConverter
     fun texteVersStatutTransfert(texte: String): StatutTransfert = StatutTransfert.valueOf(texte)
+
+    @TypeConverter
+    fun statutSessionVersTexte(valeur: StatutSession): String = valeur.name
+
+    @TypeConverter
+    fun texteVersStatutSession(texte: String): StatutSession = StatutSession.valueOf(texte)
+
+    @TypeConverter
+    fun typeOperationCaisseVersTexte(valeur: TypeOperationCaisse): String = valeur.name
+
+    @TypeConverter
+    fun texteVersTypeOperationCaisse(texte: String): TypeOperationCaisse = TypeOperationCaisse.valueOf(texte)
+
+    @TypeConverter
+    fun modePaiementVersTexte(valeur: ModePaiement): String = valeur.name
+
+    @TypeConverter
+    fun texteVersModePaiement(texte: String): ModePaiement = ModePaiement.valueOf(texte)
+
+    @TypeConverter
+    fun typeVenteVersTexte(valeur: TypeVente): String = valeur.name
+
+    @TypeConverter
+    fun texteVersTypeVente(texte: String): TypeVente = TypeVente.valueOf(texte)
+
+    @TypeConverter
+    fun statutVenteVersTexte(valeur: StatutVente): String = valeur.name
+
+    @TypeConverter
+    fun texteVersStatutVente(texte: String): StatutVente = StatutVente.valueOf(texte)
+
+    @TypeConverter
+    fun typePaiementVersTexte(valeur: TypePaiement): String = valeur.name
+
+    @TypeConverter
+    fun texteVersTypePaiement(texte: String): TypePaiement = TypePaiement.valueOf(texte)
 }
 
 @Database(
@@ -105,6 +161,16 @@ class Converters {
         LigneReceptionEntity::class,
         TransfertEntity::class,
         LigneTransfertEntity::class,
+        CaisseEntity::class,
+        SessionCaisseEntity::class,
+        OperationCaisseEntity::class,
+        ClientEntity::class,
+        PrixPointVenteEntity::class,
+        VenteEntity::class,
+        LigneVenteEntity::class,
+        PaiementVenteEntity::class,
+        RetourVenteEntity::class,
+        LigneRetourVenteEntity::class,
     ],
     version = TsenaDatabase.VERSION,
     exportSchema = true,
@@ -125,6 +191,10 @@ abstract class TsenaDatabase : RoomDatabase() {
     abstract fun commandeDao(): CommandeDao
     abstract fun receptionDao(): ReceptionDao
     abstract fun transfertDao(): TransfertDao
+    abstract fun caisseDao(): CaisseDao
+    abstract fun clientDao(): ClientDao
+    abstract fun prixPointVenteDao(): PrixPointVenteDao
+    abstract fun venteDao(): VenteDao
 
     companion object {
         /**

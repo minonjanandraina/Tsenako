@@ -122,7 +122,6 @@ private class ModuleAVenir(val nom: String, val sprint: String, val icone: @Comp
 
 /** Modules prévus dans les sprints suivants (Claude.md §6). */
 private val MODULES_A_VENIR = listOf(
-    ModuleAVenir("Ventes & caisse", "S4") { rememberVectorPainter(Icons.Filled.ShoppingCart) },
     ModuleAVenir("Charges & dépenses", "S5") { painterResource(R.drawable.ic_depenses) },
     ModuleAVenir("Comptabilité", "S6") { painterResource(R.drawable.ic_comptabilite) },
 )
@@ -218,6 +217,28 @@ fun HomeScreen(
                         },
                         modifier = Modifier.clickable { onOuvrir(Routes.ALERTES) },
                     )
+                }
+            }
+
+            if (utilisateur.peut(Permission.VENDRE) || utilisateur.peut(Permission.GERER_CAISSE)) {
+                Text("Ventes", style = MaterialTheme.typography.titleMedium)
+                Card(Modifier.fillMaxWidth()) {
+                    EntreeMenu("Caisse et vente", "Ouvrir la caisse, vendre, clôturer", rememberVectorPainter(Icons.Filled.ShoppingCart)) {
+                        onOuvrir(Routes.CAISSE)
+                    }
+                    if (utilisateur.peut(Permission.VENDRE)) {
+                        EntreeMenu("Ventes", "Tickets, retours, annulations", painterResource(R.drawable.ic_ventes)) {
+                            onOuvrir(Routes.VENTES)
+                        }
+                        EntreeMenu("Clients", "Clients en gros et à crédit", rememberVectorPainter(Icons.Filled.Person)) {
+                            onOuvrir(Routes.CLIENTS)
+                        }
+                    }
+                    if (utilisateur.peut(Permission.GERER_PRODUITS)) {
+                        EntreeMenu("Prix par point de vente", "Prix particuliers d'une boutique", painterResource(R.drawable.ic_prix)) {
+                            onOuvrir(Routes.PRIX_POINTS_VENTE)
+                        }
+                    }
                 }
             }
 

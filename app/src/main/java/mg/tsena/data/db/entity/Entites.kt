@@ -24,6 +24,8 @@ data class CommerceEntity(
     @ColumnInfo(name = "debut_exercice_mois") val debutExerciceMois: Int = 1,
     /** RG-S3 : autorise les sorties qui rendent le stock négatif */
     @ColumnInfo(name = "stock_negatif_autorise") val stockNegatifAutorise: Boolean = false,
+    /** RG-V5 : remise maximale (en % du total) qu'un vendeur peut accorder sans autorisation d'un gérant */
+    @ColumnInfo(name = "remise_max_pourcent") val remiseMaxPourcent: Int = 10,
     @ColumnInfo(name = "created_at") val createdAt: Long = maintenant(),
     @ColumnInfo(name = "updated_at") val updatedAt: Long = createdAt,
     @ColumnInfo(name = "created_by") val createdBy: String? = null,

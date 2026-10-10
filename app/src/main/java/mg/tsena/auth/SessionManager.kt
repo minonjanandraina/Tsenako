@@ -7,8 +7,18 @@ import mg.tsena.domain.Permission
 import mg.tsena.domain.RegleMetierException
 import mg.tsena.domain.Role
 
-data class UtilisateurConnecte(val id: String, val nom: String, val roles: Set<Role>) {
+/** [pointVenteId] : point de vente auquel l'utilisateur est rattaché (vendeur, RG-X2), sinon null. */
+data class UtilisateurConnecte(
+    val id: String,
+    val nom: String,
+    val roles: Set<Role>,
+    val pointVenteId: String? = null,
+) {
     fun peut(permission: Permission): Boolean = roles.any { permission in it.permissions }
+
+    /** RG-X2 : le vendeur ne voit que son point de vente ; le propriétaire et le gérant voient tout. */
+    fun voitPointVente(pointVenteId: String): Boolean =
+        peut(Permission.VOIR_TOUS_POINTS_VENTE) || pointVenteId == this.pointVenteId
 }
 
 /** Utilisateur actuellement connecté sur le téléphone (en mémoire uniquement). */

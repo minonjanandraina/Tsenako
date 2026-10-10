@@ -205,6 +205,13 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
   l'écran **Clients** (nom + numéro de téléphone, rien d'autre). À la vente en gros, le vendeur choisit un
   client existant (recherche par nom ou téléphone) ; aucune création de client depuis l'écran de vente.
   Sans client sélectionné, la vente en gros ne peut pas être validée.
+- RG-V9 : **Retour** : quantités ≤ vendu − déjà retourné ; motif obligatoire ; articles remis en stock au coût figé
+  de la vente ; remboursement au prorata de la remise, en espèces / mobile money (caisse ouverte du point de vente)
+  ou déduit du crédit du client. L'annulation (RG-V6) n'est possible que tant que la caisse de la vente est ouverte
+  et sans retour (permission gérant / propriétaire) ; ensuite, on passe par un retour.
+- RG-V10 : Remise globale sur le ticket. Au-delà de `commerce.remise_max_pourcent` (10 % par défaut, réglé par le
+  propriétaire), un vendeur doit faire saisir le code PIN d'un gérant ou du propriétaire (RG-V5), tracé dans l'audit.
+- RG-V11 : Numéros sans trou `V-000001` (ventes) et `RV-000001` (retours). Le ticket est partagé par WhatsApp.
 - RG-V8 : Téléphone client : numéro malgache valide (10 chiffres commençant par 0, ou +261 suivi de 9 chiffres),
   enregistré au format normalisé `+261XXXXXXXXX`, unique par client.
 
@@ -214,6 +221,9 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 - RG-C3 : À la clôture, l'utilisateur saisit le montant compté ; l'écart est enregistré et comptabilisé.
 - RG-C4 : Aucune opération possible sur une session fermée.
 - RG-C5 : Suivi séparé par mode de paiement (espèces, mobile money…).
+- RG-C6 : Une caisse par point de vente, créée à sa première ouverture. Seules les espèces sont comptées à la
+  clôture (écart = compté − théorique) ; mobile money et carte sont totalisés. Apports et retraits d'espèces avec motif ;
+  un retrait ne peut pas dépasser les espèces en caisse.
 
 ### 5.8 Charges & dépenses
 - RG-D1 : Toute dépense a une catégorie, elle-même liée à un compte de charge (classe 6).
@@ -352,3 +362,10 @@ app/src/main/java/mg/tsena/
   réception avec manque en perte, annulation). Numérotation CF / BR / TR. `domain/Telephone` (format RG-V8).
   Reporté : paiements fournisseurs et solde dû (S5), retour fournisseur / annulation de réception (S5),
   écritures comptables des achats (S6).
+- **S4** (code écrit, non compilé localement) : caisses (ouverture avec fond, apports / retraits, clôture avec écart,
+  historique), point de vente détail / gros (prix du point de vente sinon du produit, panier, remise avec autorisation,
+  paiements espèces / mobile money / carte / crédit / mixte, monnaie à rendre), ticket partagé par WhatsApp,
+  historique des ventes, annulation et retours, clients (nom + téléphone, crédit dû), prix par point de vente,
+  rattachement vendeur ↔ point de vente (RG-X2, pris en compte à la connexion).
+  Reporté : encaissement des crédits clients et dépenses en caisse (S5), écritures comptables des ventes et écarts
+  de caisse (S6), lecture de codes-barres par la caméra.

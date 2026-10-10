@@ -25,6 +25,9 @@ interface CommerceDao {
 
     @Query("UPDATE commerce SET stock_negatif_autorise = :autorise, updated_at = :date WHERE deleted_at IS NULL")
     suspend fun modifierStockNegatif(autorise: Boolean, date: Long)
+
+    @Query("UPDATE commerce SET remise_max_pourcent = :pourcent, updated_at = :date WHERE deleted_at IS NULL")
+    suspend fun modifierRemiseMax(pourcent: Int, date: Long)
 }
 
 @Dao
@@ -38,6 +41,10 @@ interface UtilisateurDao {
     fun observerTous(): Flow<List<UtilisateurAvecRoles>>
 
     @Transaction
+    @Query("SELECT * FROM utilisateur WHERE deleted_at IS NULL AND actif = 1")
+    suspend fun tousActifs(): List<UtilisateurAvecRoles>
+
+    @Transaction
     @Query("SELECT * FROM utilisateur WHERE id = :id AND deleted_at IS NULL")
     suspend fun getAvecRoles(id: String): UtilisateurAvecRoles?
 
@@ -46,6 +53,10 @@ interface UtilisateurDao {
 
     @Insert
     suspend fun insererRole(role: UtilisateurRoleEntity)
+
+    /** Point de vente d'un vendeur (RG-X2), porté par ses rôles actifs */
+    @Query("UPDATE utilisateur_role SET point_vente_id = :pointVenteId, updated_at = :date WHERE utilisateur_id = :utilisateurId AND deleted_at IS NULL")
+    suspend fun modifierPointVente(utilisateurId: String, pointVenteId: String?, date: Long)
 
     @Query("UPDATE utilisateur SET actif = 0, updated_at = :date WHERE id = :id")
     suspend fun desactiver(id: String, date: Long)
