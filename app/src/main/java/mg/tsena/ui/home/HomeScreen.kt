@@ -43,8 +43,11 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import mg.tsena.auth.AuthRepository
 import mg.tsena.auth.UtilisateurConnecte
@@ -54,11 +57,18 @@ import mg.tsena.data.db.entity.CommerceEntity
 import mg.tsena.domain.Permission
 import mg.tsena.domain.formaterDateHeure
 import mg.tsena.domain.maintenant
+import mg.tsena.stock.StockRepository
 import mg.tsena.ui.Routes
 import java.io.IOException
 
-class HomeViewModel(private val auth: AuthRepository, private val backup: BackupManager) : ViewModel() {
+class HomeViewModel(
+    private val auth: AuthRepository,
+    private val backup: BackupManager,
+    stock: StockRepository,
+) : ViewModel() {
     val derniereSauvegarde: StateFlow<Long?> = backup.derniereSauvegarde
+    val nbAlertes: StateFlow<Int> = stock.observerAlertes().map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     private val _partage = Channel<Intent>(Channel.BUFFERED)
     val partage: Flow<Intent> = _partage.receiveAsFlow()
@@ -90,7 +100,7 @@ class HomeViewModel(private val auth: AuthRepository, private val backup: Backup
 
     companion object {
         val Factory = viewModelFactory {
-            initializer { HomeViewModel(container.authRepository, container.backupManager) }
+            initializer { HomeViewModel(container.authRepository, container.backupManager, container.stockRepository) }
         }
     }
 }
@@ -99,7 +109,6 @@ private const val UN_JOUR_MS = 24 * 60 * 60 * 1000L
 
 /** Modules prévus dans les sprints suivants (Claude.md §6). */
 private val MODULES_A_VENIR = listOf(
-    "Stocks" to "S2",
     "Approvisionnement & transferts" to "S3",
     "Ventes & caisse" to "S4",
     "Charges & dépenses" to "S5",
@@ -159,6 +168,32 @@ fun HomeScreen(
                     if (utilisateur.peut(Permission.GERER_REFERENTIEL)) {
                         EntreeMenu("Dépôts et points de vente", "Salles de stockage, boutiques") { onOuvrir(Routes.LIEUX) }
                     }
+                }
+            }
+
+            if (utilisateur.peut(Permission.GERER_STOCK)) {
+                val nbAlertes by vm.nbAlertes.collectAsStateWithLifecycle()
+                Text("Stocks", style = MaterialTheme.typography.titleMedium)
+                Card(Modifier.fillMaxWidth()) {
+                    EntreeMenu("Stock par dépôt", "Quantités, coût moyen, pertes") { onOuvrir(Routes.STOCKS) }
+                    EntreeMenu("Inventaires", "Compter le stock et corriger les écarts") { onOuvrir(Routes.INVENTAIRES) }
+                    ListItem(
+                        headlineContent = { Text("Alertes de stock") },
+                        supportingContent = {
+                            Text(
+                                if (nbAlertes == 0) "Aucun produit sous son seuil" else "$nbAlertes produit(s) sous le seuil",
+                                color = if (nbAlertes == 0) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                Icons.Filled.Warning,
+                                contentDescription = null,
+                                tint = if (nbAlertes == 0) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        modifier = Modifier.clickable { onOuvrir(Routes.ALERTES) },
+                    )
                 }
             }
 

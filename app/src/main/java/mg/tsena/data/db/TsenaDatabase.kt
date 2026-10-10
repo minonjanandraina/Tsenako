@@ -8,17 +8,25 @@ import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
 import mg.tsena.data.db.dao.CommerceDao
+import mg.tsena.data.db.dao.InventaireDao
 import mg.tsena.data.db.dao.JournalAuditDao
 import mg.tsena.data.db.dao.LieuDao
 import mg.tsena.data.db.dao.ProduitDao
+import mg.tsena.data.db.dao.StockDao
 import mg.tsena.data.db.dao.TypeProduitDao
 import mg.tsena.data.db.dao.UniteDao
 import mg.tsena.data.db.dao.UtilisateurDao
 import mg.tsena.data.db.entity.CommerceEntity
 import mg.tsena.data.db.entity.DepotEntity
+import mg.tsena.data.db.entity.InventaireEntity
 import mg.tsena.data.db.entity.JournalAuditEntity
+import mg.tsena.data.db.entity.LigneInventaireEntity
+import mg.tsena.data.db.entity.MouvementStockEntity
 import mg.tsena.data.db.entity.PointVenteEntity
 import mg.tsena.data.db.entity.ProduitEntity
+import mg.tsena.data.db.entity.StatutInventaire
+import mg.tsena.data.db.entity.StockEntity
+import mg.tsena.data.db.entity.TypeMouvement
 import mg.tsena.data.db.entity.TypeProduitEntity
 import mg.tsena.data.db.entity.UniteEntity
 import mg.tsena.data.db.entity.UtilisateurEntity
@@ -33,6 +41,18 @@ class Converters {
 
     @TypeConverter
     fun texteVersRole(texte: String): Role = Role.valueOf(texte)
+
+    @TypeConverter
+    fun typeMouvementVersTexte(type: TypeMouvement): String = type.name
+
+    @TypeConverter
+    fun texteVersTypeMouvement(texte: String): TypeMouvement = TypeMouvement.valueOf(texte)
+
+    @TypeConverter
+    fun statutInventaireVersTexte(statut: StatutInventaire): String = statut.name
+
+    @TypeConverter
+    fun texteVersStatutInventaire(texte: String): StatutInventaire = StatutInventaire.valueOf(texte)
 }
 
 @Database(
@@ -46,6 +66,10 @@ class Converters {
         ProduitEntity::class,
         DepotEntity::class,
         PointVenteEntity::class,
+        StockEntity::class,
+        MouvementStockEntity::class,
+        InventaireEntity::class,
+        LigneInventaireEntity::class,
     ],
     version = TsenaDatabase.VERSION,
     exportSchema = true,
@@ -59,6 +83,8 @@ abstract class TsenaDatabase : RoomDatabase() {
     abstract fun uniteDao(): UniteDao
     abstract fun produitDao(): ProduitDao
     abstract fun lieuDao(): LieuDao
+    abstract fun stockDao(): StockDao
+    abstract fun inventaireDao(): InventaireDao
 
     companion object {
         /**

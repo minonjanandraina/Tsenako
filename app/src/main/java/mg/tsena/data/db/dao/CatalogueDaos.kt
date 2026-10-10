@@ -75,6 +75,9 @@ interface ProduitDao {
     @Query("SELECT COUNT(*) FROM produit WHERE code_barre = :codeBarre AND id != :exclureId")
     suspend fun compterParCodeBarre(codeBarre: String, exclureId: String): Int
 
+    @Query("SELECT * FROM produit WHERE deleted_at IS NULL AND actif = 1")
+    suspend fun actifs(): List<ProduitEntity>
+
     @Query("SELECT code FROM produit")
     suspend fun tousLesCodes(): List<String>
 

@@ -26,6 +26,8 @@ class LieuRepository(
 
     fun observerPointsVente(): Flow<List<PointVenteAvecDepot>> = dao.observerPointsVente()
 
+    suspend fun getDepot(id: String): DepotEntity? = dao.getDepot(id)
+
     suspend fun enregistrerDepot(id: String?, nom: String, adresse: String, actif: Boolean) {
         val auteur = session.exiger(Permission.GERER_REFERENTIEL)
         val nomPropre = nom.trim()

@@ -29,6 +29,11 @@ import mg.tsena.ui.login.LoginScreen
 import mg.tsena.ui.restauration.RestaurationDialog
 import mg.tsena.ui.restauration.RestaurationViewModel
 import mg.tsena.ui.setup.SetupScreen
+import mg.tsena.ui.stock.AlertesStockScreen
+import mg.tsena.ui.stock.FicheStockScreen
+import mg.tsena.ui.stock.InventaireScreen
+import mg.tsena.ui.stock.InventairesScreen
+import mg.tsena.ui.stock.StockScreen
 import mg.tsena.ui.users.UsersScreen
 
 object Routes {
@@ -37,8 +42,15 @@ object Routes {
     const val CATEGORIES = "categories"
     const val UNITES = "unites"
     const val LIEUX = "lieux"
+    const val STOCKS = "stocks"
+    const val ALERTES = "stocks/alertes"
+    const val FICHE_STOCK = "stocks/fiche/{produitId}/{depotId}"
+    const val INVENTAIRES = "inventaires"
+    const val INVENTAIRE = "inventaires/{id}"
 
     fun produit(id: String?) = if (id == null) "produit" else "produit?id=$id"
+    fun ficheStock(produitId: String, depotId: String) = "stocks/fiche/$produitId/$depotId"
+    fun inventaire(id: String) = "inventaires/$id"
 }
 
 private val TYPES_SAUVEGARDE = arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")
@@ -108,5 +120,33 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
         composable(Routes.CATEGORIES) { CategoriesScreen(onRetour = { nav.popBackStack() }) }
         composable(Routes.UNITES) { UnitesScreen(onRetour = { nav.popBackStack() }) }
         composable(Routes.LIEUX) { LieuxScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.STOCKS) {
+            StockScreen(
+                peutParametrer = etat.utilisateur.peut(Permission.PARAMETRER_COMMERCE),
+                stockNegatifAutorise = etat.commerce.stockNegatifAutorise,
+                onRetour = { nav.popBackStack() },
+                onFiche = { produitId, depotId -> nav.navigate(Routes.ficheStock(produitId, depotId)) },
+                onInventaires = { nav.navigate(Routes.INVENTAIRES) },
+            )
+        }
+        composable(Routes.ALERTES) {
+            AlertesStockScreen(
+                onRetour = { nav.popBackStack() },
+                onFiche = { produitId, depotId -> nav.navigate(Routes.ficheStock(produitId, depotId)) },
+            )
+        }
+        composable(Routes.FICHE_STOCK) { entree ->
+            FicheStockScreen(
+                produitId = entree.arguments?.getString("produitId").orEmpty(),
+                depotId = entree.arguments?.getString("depotId").orEmpty(),
+                onRetour = { nav.popBackStack() },
+            )
+        }
+        composable(Routes.INVENTAIRES) {
+            InventairesScreen(onRetour = { nav.popBackStack() }, onOuvrir = { id -> nav.navigate(Routes.inventaire(id)) })
+        }
+        composable(Routes.INVENTAIRE) { entree ->
+            InventaireScreen(inventaireId = entree.arguments?.getString("id").orEmpty(), onRetour = { nav.popBackStack() })
+        }
     }
 }

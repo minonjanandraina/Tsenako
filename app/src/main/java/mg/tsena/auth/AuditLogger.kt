@@ -21,6 +21,12 @@ enum class ActionAudit {
     MODIFICATION_DEPOT,
     CREATION_POINT_VENTE,
     MODIFICATION_POINT_VENTE,
+    STOCK_INITIAL,
+    PERTE_STOCK,
+    CREATION_INVENTAIRE,
+    VALIDATION_INVENTAIRE,
+    ABANDON_INVENTAIRE,
+    PARAMETRE_STOCK_NEGATIF,
 }
 
 class AuditLogger(private val dao: JournalAuditDao, private val session: SessionManager) {

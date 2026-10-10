@@ -14,6 +14,8 @@ enum class Permission {
     GERER_DEPENSES,
     VOIR_COMPTABILITE,
     VOIR_TOUS_POINTS_VENTE,
+    /** Paramètres du commerce (stock négatif…) : propriétaire uniquement */
+    PARAMETRER_COMMERCE,
 }
 
 enum class Role(val libelle: String, val permissions: Set<Permission>) {

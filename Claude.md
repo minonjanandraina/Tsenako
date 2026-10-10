@@ -54,7 +54,7 @@ Conventions : chaque table a `id` (UUID), `created_at`, `updated_at`,
 exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jamais de flottant.
 
 ### 4.1 Référentiel
-- **commerce** : nom, devise (ex. MGA), adresse, NIF/STAT, date début exercice
+- **commerce** : nom, devise (ex. MGA), adresse, NIF/STAT, date début exercice, stock_negatif_autorise (RG-S3)
 - **utilisateur** : nom, téléphone, code PIN / mot de passe, actif
 - **role** : nom (propriétaire, gérant, vendeur, magasinier), permissions
 - **utilisateur_role** : utilisateur_id, role_id, point_vente_id (nullable)
@@ -67,11 +67,11 @@ exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jama
 ### 4.2 Stocks
 - **depot** (salle de stockage) : nom, adresse, point_vente_id (nullable), actif
 - **stock** : produit_id, depot_id, quantite, cout_moyen_unitaire *(une ligne par couple produit/dépôt)*
-- **mouvement_stock** : produit_id, depot_id, type (`ENTREE_ACHAT`, `SORTIE_VENTE`, `TRANSFERT_SORTIE`,
-  `TRANSFERT_ENTREE`, `AJUSTEMENT`, `RETOUR_CLIENT`, `RETOUR_FOURNISSEUR`, `PERTE`), quantite,
-  cout_unitaire, document_type, document_id, date
-- **inventaire** : depot_id, date, statut (`BROUILLON`, `VALIDE`)
-- **ligne_inventaire** : inventaire_id, produit_id, quantite_theorique, quantite_comptee, ecart
+- **mouvement_stock** : produit_id, depot_id, type (`STOCK_INITIAL`, `ENTREE_ACHAT`, `SORTIE_VENTE`, `TRANSFERT_SORTIE`,
+  `TRANSFERT_ENTREE`, `AJUSTEMENT`, `RETOUR_CLIENT`, `RETOUR_FOURNISSEUR`, `PERTE`), quantite (signée : + entrée, − sortie),
+  cout_unitaire, quantite_apres, document_type, document_id, motif, date
+- **inventaire** : depot_id, date, statut (`BROUILLON`, `VALIDE`), date_validation, valide_par
+- **ligne_inventaire** : inventaire_id, produit_id, quantite_theorique, quantite_comptee (null = non compté), ecart
 
 ### 4.3 Fournisseurs
 - **fournisseur** : nom, téléphone, adresse, NIF, conditions de paiement (jours), actif
@@ -153,10 +153,16 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
   `stock.quantite` = somme des mouvements (valeur dénormalisée, recalculable).
 - RG-S2 : Valorisation au **coût moyen unitaire pondéré (CMUP)**, recalculé à chaque entrée
   (IAS 2 autorise CMUP ou FIFO ; LIFO interdit).
-- RG-S3 : Stock négatif interdit par défaut (paramétrable par commerce).
-- RG-S4 : Alerte quand `quantite <= seuil_alerte`.
+  Une entrée sur un stock nul ou négatif prend directement son coût comme CMUP ; une sortie est valorisée au CMUP.
+- RG-S3 : Stock négatif interdit par défaut (paramétrable par commerce, propriétaire uniquement).
+- RG-S4 : Alerte quand `quantite <= seuil_alerte`, si le seuil est > 0, pour les dépôts actifs où le produit
+  a déjà eu du stock.
 - RG-S5 : Un inventaire validé génère des mouvements `AJUSTEMENT` pour chaque écart, et une écriture
-  comptable (perte ou gain sur stock).
+  comptable (perte ou gain sur stock, à partir de S6). Un seul inventaire en cours par dépôt ; la quantité théorique
+  est relue au moment de la validation (les ventes faites pendant le comptage sont prises en compte) ;
+  les produits non comptés ne sont pas modifiés.
+- RG-S6 : **Stock initial** : saisie manuelle de la quantité de départ avec son coût d'achat unitaire
+  (mouvement `STOCK_INITIAL`). **Perte** (casse, péremption, vol) : sortie manuelle avec motif obligatoire.
 
 ### 5.4 Fournisseurs & approvisionnement
 - RG-A1 : Une réception validée crée les mouvements d'entrée et met à jour le CMUP du dépôt concerné.
@@ -321,3 +327,7 @@ app/src/main/java/mg/tsena/
   ou galerie, redimensionnée 1024 px, JPEG 80 %), recherche et filtre par catégorie, dépôts et points de vente.
   Prix de vente en gros (facultatif) sur le produit.
   Reporté : conversion_unite (S3), prix_point_vente et rattachement vendeur ↔ point de vente (S4).
+- **S2** (code écrit, non compilé) : stock par dépôt avec CMUP (`StockRepository.enregistrerMouvement`, seul point
+  d'entrée pour les achats/ventes/transferts à venir), historique des mouvements, stock initial, pertes,
+  alertes de stock (accueil + écran dédié), inventaires (comptage, validation, abandon), paramètre stock négatif.
+  Reporté : écriture comptable des écarts d'inventaire (S6).

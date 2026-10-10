@@ -22,6 +22,8 @@ data class CommerceEntity(
     val nif: String? = null,
     val stat: String? = null,
     @ColumnInfo(name = "debut_exercice_mois") val debutExerciceMois: Int = 1,
+    /** RG-S3 : autorise les sorties qui rendent le stock négatif */
+    @ColumnInfo(name = "stock_negatif_autorise") val stockNegatifAutorise: Boolean = false,
     @ColumnInfo(name = "created_at") val createdAt: Long = maintenant(),
     @ColumnInfo(name = "updated_at") val updatedAt: Long = createdAt,
     @ColumnInfo(name = "created_by") val createdBy: String? = null,

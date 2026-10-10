@@ -22,6 +22,9 @@ interface CommerceDao {
 
     @Insert
     suspend fun inserer(commerce: CommerceEntity)
+
+    @Query("UPDATE commerce SET stock_negatif_autorise = :autorise, updated_at = :date WHERE deleted_at IS NULL")
+    suspend fun modifierStockNegatif(autorise: Boolean, date: Long)
 }
 
 @Dao
