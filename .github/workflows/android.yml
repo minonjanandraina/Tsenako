@@ -1,0 +1,49 @@
+name: Android
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Tests unitaires et APK debug
+        run: |
+          set -o pipefail
+          gradle testDebugUnitTest assembleDebug --console=plain 2>&1 | tee build.log
+
+      # Erreurs regroupées dans une annotation lisible sans se connecter
+      - name: Résumé des erreurs
+        if: failure()
+        run: |
+          resume=$(grep -E '^e: |FAILED|What went wrong|Exception|error:' -A4 build.log | head -80 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::error title=Build::${resume}"
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: tsena-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rapports
+          path: |
+            app/build/reports/tests/
+            app/schemas/
+            build.log
