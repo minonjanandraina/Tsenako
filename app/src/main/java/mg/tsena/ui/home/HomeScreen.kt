@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -33,7 +34,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -49,6 +53,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import mg.tsena.R
 import mg.tsena.auth.AuthRepository
 import mg.tsena.auth.UtilisateurConnecte
 import mg.tsena.backup.BackupManager
@@ -107,12 +112,14 @@ class HomeViewModel(
 
 private const val UN_JOUR_MS = 24 * 60 * 60 * 1000L
 
+private class ModuleAVenir(val nom: String, val sprint: String, val icone: @Composable () -> Painter)
+
 /** Modules prévus dans les sprints suivants (Claude.md §6). */
 private val MODULES_A_VENIR = listOf(
-    "Approvisionnement & transferts" to "S3",
-    "Ventes & caisse" to "S4",
-    "Charges & dépenses" to "S5",
-    "Comptabilité" to "S6",
+    ModuleAVenir("Approvisionnement & transferts", "S3") { painterResource(R.drawable.ic_appro) },
+    ModuleAVenir("Ventes & caisse", "S4") { rememberVectorPainter(Icons.Filled.ShoppingCart) },
+    ModuleAVenir("Charges & dépenses", "S5") { painterResource(R.drawable.ic_depenses) },
+    ModuleAVenir("Comptabilité", "S6") { painterResource(R.drawable.ic_comptabilite) },
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -161,12 +168,20 @@ fun HomeScreen(
                 Text("Catalogue", style = MaterialTheme.typography.titleMedium)
                 Card(Modifier.fillMaxWidth()) {
                     if (utilisateur.peut(Permission.GERER_PRODUITS)) {
-                        EntreeMenu("Produits", "Photos, prix, codes") { onOuvrir(Routes.PRODUITS) }
-                        EntreeMenu("Catégories", "Classement des produits") { onOuvrir(Routes.CATEGORIES) }
-                        EntreeMenu("Unités", "Pièce, kg, litre, sac…") { onOuvrir(Routes.UNITES) }
+                        EntreeMenu("Produits", "Photos, prix, codes", painterResource(R.drawable.ic_produits)) {
+                            onOuvrir(Routes.PRODUITS)
+                        }
+                        EntreeMenu("Catégories", "Classement des produits", painterResource(R.drawable.ic_categories)) {
+                            onOuvrir(Routes.CATEGORIES)
+                        }
+                        EntreeMenu("Unités", "Pièce, kg, litre, sac…", painterResource(R.drawable.ic_unites)) {
+                            onOuvrir(Routes.UNITES)
+                        }
                     }
                     if (utilisateur.peut(Permission.GERER_REFERENTIEL)) {
-                        EntreeMenu("Dépôts et points de vente", "Salles de stockage, boutiques") { onOuvrir(Routes.LIEUX) }
+                        EntreeMenu("Dépôts et points de vente", "Salles de stockage, boutiques", painterResource(R.drawable.ic_lieux)) {
+                            onOuvrir(Routes.LIEUX)
+                        }
                     }
                 }
             }
@@ -175,8 +190,12 @@ fun HomeScreen(
                 val nbAlertes by vm.nbAlertes.collectAsStateWithLifecycle()
                 Text("Stocks", style = MaterialTheme.typography.titleMedium)
                 Card(Modifier.fillMaxWidth()) {
-                    EntreeMenu("Stock par dépôt", "Quantités, coût moyen, pertes") { onOuvrir(Routes.STOCKS) }
-                    EntreeMenu("Inventaires", "Compter le stock et corriger les écarts") { onOuvrir(Routes.INVENTAIRES) }
+                    EntreeMenu("Stock par dépôt", "Quantités, coût moyen, pertes", painterResource(R.drawable.ic_stock)) {
+                        onOuvrir(Routes.STOCKS)
+                    }
+                    EntreeMenu("Inventaires", "Compter le stock et corriger les écarts", painterResource(R.drawable.ic_inventaire)) {
+                        onOuvrir(Routes.INVENTAIRES)
+                    }
                     ListItem(
                         headlineContent = { Text("Alertes de stock") },
                         supportingContent = {
@@ -214,10 +233,11 @@ fun HomeScreen(
 
             Text("Bientôt disponible", style = MaterialTheme.typography.titleMedium)
             Card(Modifier.fillMaxWidth()) {
-                MODULES_A_VENIR.forEach { (module, sprint) ->
+                MODULES_A_VENIR.forEach { module ->
                     ListItem(
-                        headlineContent = { Text(module) },
-                        trailingContent = { Text(sprint, style = MaterialTheme.typography.labelMedium) },
+                        headlineContent = { Text(module.nom) },
+                        leadingContent = { Icon(module.icone(), contentDescription = null) },
+                        trailingContent = { Text(module.sprint, style = MaterialTheme.typography.labelMedium) },
                     )
                 }
             }
@@ -226,10 +246,11 @@ fun HomeScreen(
 }
 
 @Composable
-private fun EntreeMenu(titre: String, description: String, onClick: () -> Unit) {
+private fun EntreeMenu(titre: String, description: String, icone: Painter, onClick: () -> Unit) {
     ListItem(
         headlineContent = { Text(titre) },
         supportingContent = { Text(description) },
+        leadingContent = { Icon(icone, contentDescription = null) },
         modifier = Modifier.clickable(onClick = onClick),
     )
 }
