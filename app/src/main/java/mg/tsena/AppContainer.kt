@@ -8,7 +8,10 @@ import mg.tsena.auth.AuditLogger
 import mg.tsena.auth.AuthRepository
 import mg.tsena.auth.SessionManager
 import mg.tsena.backup.BackupManager
+import mg.tsena.catalogue.CatalogueRepository
+import mg.tsena.catalogue.PhotoManager
 import mg.tsena.data.db.TsenaDatabase
+import mg.tsena.lieux.LieuRepository
 
 /** Injection de dépendances manuelle : une seule instance de chaque service pour toute l'app. */
 class AppContainer(context: Context) {
@@ -17,6 +20,9 @@ class AppContainer(context: Context) {
     val audit = AuditLogger(database.journalAuditDao(), session)
     val authRepository = AuthRepository(database, session, audit)
     val backupManager = BackupManager(context, database, audit)
+    val photoManager = PhotoManager(context)
+    val catalogueRepository = CatalogueRepository(database, session, audit, photoManager)
+    val lieuRepository = LieuRepository(database, session, audit)
 }
 
 class TsenaApp : Application() {

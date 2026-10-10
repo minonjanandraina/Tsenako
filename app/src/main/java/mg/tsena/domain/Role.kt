@@ -2,6 +2,8 @@ package mg.tsena.domain
 
 enum class Permission {
     GERER_UTILISATEURS,
+    /** Dépôts et points de vente */
+    GERER_REFERENTIEL,
     SAUVEGARDER,
     RESTAURER,
     GERER_PRODUITS,

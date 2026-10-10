@@ -46,14 +46,14 @@ data class UtilisateurEntity(
     tableName = "utilisateur_role",
     foreignKeys = [
         ForeignKey(entity = UtilisateurEntity::class, parentColumns = ["id"], childColumns = ["utilisateur_id"]),
+        ForeignKey(entity = PointVenteEntity::class, parentColumns = ["id"], childColumns = ["point_vente_id"]),
     ],
-    indices = [Index("utilisateur_id")],
+    indices = [Index("utilisateur_id"), Index("point_vente_id")],
 )
 data class UtilisateurRoleEntity(
     @PrimaryKey val id: String = nouvelId(),
     @ColumnInfo(name = "utilisateur_id") val utilisateurId: String,
     val role: Role,
-    // Clé étrangère vers point_vente ajoutée au sprint S1
     @ColumnInfo(name = "point_vente_id") val pointVenteId: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long = maintenant(),
     @ColumnInfo(name = "updated_at") val updatedAt: Long = createdAt,

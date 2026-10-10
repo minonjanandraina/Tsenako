@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 import mg.tsena.BuildConfig
 import mg.tsena.auth.ActionAudit
 import mg.tsena.auth.AuditLogger
+import mg.tsena.catalogue.PhotoManager
 import mg.tsena.data.db.TsenaDatabase
 import mg.tsena.domain.maintenant
 import java.io.File
@@ -32,8 +33,7 @@ class BackupManager(
     private val fichierRecu get() = File(dossierRestauration, "recu.zip")
     private val dossierExtrait get() = File(dossierRestauration, "extrait")
 
-    /** Photos des produits (utilisé à partir du sprint S1). */
-    val dossierPhotos: File get() = File(context.filesDir, "photos").apply { mkdirs() }
+    private val dossierPhotos: File get() = PhotoManager.dossierPhotos(context).apply { mkdirs() }
 
     private val _derniereSauvegarde = MutableStateFlow(prefs.getLong(CLE_DERNIERE, 0L).takeIf { it > 0 })
     val derniereSauvegarde: StateFlow<Long?> = _derniereSauvegarde.asStateFlow()
@@ -102,7 +102,7 @@ class BackupManager(
         listOf("", "-wal", "-shm", "-journal").forEach { File(chemin.path + it).delete() }
         baseExtraite.copyTo(chemin, overwrite = true)
 
-        val photos = File(context.filesDir, "photos")
+        val photos = PhotoManager.dossierPhotos(context)
         photos.deleteRecursively()
         File(dossierExtrait, BackupArchive.PREFIXE_PHOTOS).takeIf { it.isDirectory }?.copyRecursively(photos, overwrite = true)
 

@@ -3,6 +3,7 @@ package mg.tsena.ui.home
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.database.SQLException
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -53,6 +54,7 @@ import mg.tsena.data.db.entity.CommerceEntity
 import mg.tsena.domain.Permission
 import mg.tsena.domain.formaterDateHeure
 import mg.tsena.domain.maintenant
+import mg.tsena.ui.Routes
 import java.io.IOException
 
 class HomeViewModel(private val auth: AuthRepository, private val backup: BackupManager) : ViewModel() {
@@ -97,7 +99,6 @@ private const val UN_JOUR_MS = 24 * 60 * 60 * 1000L
 
 /** Modules prévus dans les sprints suivants (Claude.md §6). */
 private val MODULES_A_VENIR = listOf(
-    "Produits & catégories" to "S1",
     "Stocks" to "S2",
     "Approvisionnement & transferts" to "S3",
     "Ventes & caisse" to "S4",
@@ -112,6 +113,7 @@ fun HomeScreen(
     utilisateur: UtilisateurConnecte,
     onUtilisateurs: () -> Unit,
     onRestaurer: () -> Unit,
+    onOuvrir: (route: String) -> Unit,
     vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
 ) {
     val context = LocalContext.current
@@ -146,6 +148,20 @@ fun HomeScreen(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            if (utilisateur.peut(Permission.GERER_PRODUITS) || utilisateur.peut(Permission.GERER_REFERENTIEL)) {
+                Text("Catalogue", style = MaterialTheme.typography.titleMedium)
+                Card(Modifier.fillMaxWidth()) {
+                    if (utilisateur.peut(Permission.GERER_PRODUITS)) {
+                        EntreeMenu("Produits", "Photos, prix, codes") { onOuvrir(Routes.PRODUITS) }
+                        EntreeMenu("Catégories", "Classement des produits") { onOuvrir(Routes.CATEGORIES) }
+                        EntreeMenu("Unités", "Pièce, kg, litre, sac…") { onOuvrir(Routes.UNITES) }
+                    }
+                    if (utilisateur.peut(Permission.GERER_REFERENTIEL)) {
+                        EntreeMenu("Dépôts et points de vente", "Salles de stockage, boutiques") { onOuvrir(Routes.LIEUX) }
+                    }
+                }
+            }
+
             if (utilisateur.peut(Permission.SAUVEGARDER)) {
                 CarteSauvegarde(vm, peutRestaurer = utilisateur.peut(Permission.RESTAURER), onRestaurer = onRestaurer)
             }
@@ -172,6 +188,15 @@ fun HomeScreen(
             }
         }
     }
+}
+
+@Composable
+private fun EntreeMenu(titre: String, description: String, onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(titre) },
+        supportingContent = { Text(description) },
+        modifier = Modifier.clickable(onClick = onClick),
+    )
 }
 
 @Composable

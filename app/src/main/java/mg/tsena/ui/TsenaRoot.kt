@@ -13,16 +13,33 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import mg.tsena.domain.Permission
+import mg.tsena.ui.catalogue.CategoriesScreen
+import mg.tsena.ui.catalogue.ProduitFormScreen
+import mg.tsena.ui.catalogue.ProduitsScreen
+import mg.tsena.ui.catalogue.UnitesScreen
 import mg.tsena.ui.home.HomeScreen
+import mg.tsena.ui.lieux.LieuxScreen
 import mg.tsena.ui.login.LoginScreen
 import mg.tsena.ui.restauration.RestaurationDialog
 import mg.tsena.ui.restauration.RestaurationViewModel
 import mg.tsena.ui.setup.SetupScreen
 import mg.tsena.ui.users.UsersScreen
+
+object Routes {
+    const val PRODUITS = "produits"
+    const val PRODUIT = "produit?id={id}"
+    const val CATEGORIES = "categories"
+    const val UNITES = "unites"
+    const val LIEUX = "lieux"
+
+    fun produit(id: String?) = if (id == null) "produit" else "produit?id=$id"
+}
 
 private val TYPES_SAUVEGARDE = arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")
 
@@ -69,10 +86,27 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
                 utilisateur = etat.utilisateur,
                 onUtilisateurs = { nav.navigate("utilisateurs") },
                 onRestaurer = onRestaurer,
+                onOuvrir = { route -> nav.navigate(route) },
             )
         }
         composable("utilisateurs") {
             UsersScreen(utilisateurConnecte = etat.utilisateur, onRetour = { nav.popBackStack() })
         }
+        composable(Routes.PRODUITS) {
+            ProduitsScreen(
+                onRetour = { nav.popBackStack() },
+                onNouveau = { nav.navigate(Routes.produit(null)) },
+                onModifier = { id -> nav.navigate(Routes.produit(id)) },
+            )
+        }
+        composable(
+            Routes.PRODUIT,
+            arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { entree ->
+            ProduitFormScreen(produitId = entree.arguments?.getString("id"), onTermine = { nav.popBackStack() })
+        }
+        composable(Routes.CATEGORIES) { CategoriesScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.UNITES) { UnitesScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.LIEUX) { LieuxScreen(onRetour = { nav.popBackStack() }) }
     }
 }

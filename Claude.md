@@ -50,8 +50,8 @@ conforme aux standards internationaux.
 ## 4. Modélisation de la base de données
 
 Conventions : chaque table a `id` (UUID), `created_at`, `updated_at`,
-`created_by`, `deleted_at` (suppression logique). Montants en entier (plus petite unité monétaire)
-ou décimal fixe — jamais en flottant.
+`created_by`, `deleted_at` (suppression logique). Montants en Ariary entiers ; quantités en entiers
+exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jamais de flottant.
 
 ### 4.1 Référentiel
 - **commerce** : nom, devise (ex. MGA), adresse, NIF/STAT, date début exercice
@@ -59,9 +59,9 @@ ou décimal fixe — jamais en flottant.
 - **role** : nom (propriétaire, gérant, vendeur, magasinier), permissions
 - **utilisateur_role** : utilisateur_id, role_id, point_vente_id (nullable)
 - **type_produit** : nom, parent_id (hiérarchie de catégories)
-- **unite** : nom (pièce, kg, litre, carton…)
-- **produit** : code, code_barre, nom, type_produit_id (**obligatoire**), unite_id, prix_vente, seuil_alerte,
-  photo_chemin (**obligatoire**), actif
+- **unite** : nom, symbole, decimale (pièce, kg, litre, sac, carton… pré-remplies à la création de la base)
+- **produit** : code (unique, auto `P00001`), code_barre (unique, facultatif), nom, type_produit_id (**obligatoire**),
+  unite_id, prix_vente (Ar), seuil_alerte_milli, photo_chemin (**obligatoire**, relatif au dossier photos), actif
 - **conversion_unite** : produit_id, unite_source_id, unite_cible_id, facteur (ex. 1 carton = 24 pièces)
 
 ### 4.2 Stocks
@@ -127,14 +127,26 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 
 ## 5. Règles métier
 
-### 5.0 Produits
+### 5.1 Produits
 - RG-P1 : Chaque produit appartient **obligatoirement** à une catégorie (`type_produit`).
 - RG-P2 : Chaque produit a **obligatoirement** une photo (appareil photo ou galerie), compressée et
   redimensionnée avant enregistrement.
 - RG-P3 : Une catégorie contenant des produits ne peut pas être supprimée.
 - RG-P4 : La photo est affichée dans le catalogue, la caisse (vente) et les écrans de stock.
 
-### 5.1 Stocks
+- RG-P5 : Code produit unique, généré automatiquement (`P00001`…) s'il est laissé vide ; code-barre unique s'il est saisi.
+- RG-P6 : Un produit n'est jamais supprimé (il sera référencé par les mouvements) : on le désactive.
+- RG-P7 : Catégories hiérarchiques : nom unique au même niveau ; une catégorie ne peut pas être placée
+  dans elle-même ou dans une de ses sous-catégories.
+- RG-P8 : Une quantité décimale n'est acceptée que si l'unité l'autorise (kg, litre…).
+
+### 5.2 Lieux
+- RG-L1 : Un point de vente vend depuis un seul dépôt (`point_vente.depot_id`). À sa création, si aucun
+  dépôt n'est choisi, un dépôt « Magasin <nom> » rattaché au point de vente est créé automatiquement.
+- RG-L2 : Noms de dépôts et de points de vente uniques. Désactivation plutôt que suppression.
+- RG-L3 : Un dépôt qui alimente un point de vente actif ne peut pas être désactivé.
+
+### 5.3 Stocks
 - RG-S1 : Le stock n'est **jamais modifié directement** ; toute variation passe par un `mouvement_stock`.
   `stock.quantite` = somme des mouvements (valeur dénormalisée, recalculable).
 - RG-S2 : Valorisation au **coût moyen unitaire pondéré (CMUP)**, recalculé à chaque entrée
@@ -144,19 +156,19 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 - RG-S5 : Un inventaire validé génère des mouvements `AJUSTEMENT` pour chaque écart, et une écriture
   comptable (perte ou gain sur stock).
 
-### 5.2 Fournisseurs & approvisionnement
+### 5.4 Fournisseurs & approvisionnement
 - RG-A1 : Une réception validée crée les mouvements d'entrée et met à jour le CMUP du dépôt concerné.
 - RG-A2 : Une réception peut être partielle ; la commande passe en `PARTIELLE` jusqu'à réception complète.
 - RG-A3 : Réception à crédit ⇒ dette fournisseur (compte 401) ; le solde fournisseur = réceptions − paiements.
 - RG-A4 : Un document validé ne se modifie pas ; on l'annule par un document inverse (avoir, retour).
 
-### 5.3 Transferts
+### 5.5 Transferts
 - RG-T1 : Dépôt source ≠ dépôt destination.
 - RG-T2 : À l'envoi : sortie du dépôt source (statut `EN_TRANSIT`) ; à la réception : entrée au dépôt destination.
 - RG-T3 : Écart entre quantité envoyée et reçue ⇒ mouvement `PERTE` justifié.
 - RG-T4 : Le transfert se fait au CMUP du dépôt source ; il n'a **pas d'impact sur le résultat**.
 
-### 5.4 Ventes
+### 5.6 Ventes
 - RG-V1 : Prix appliqué = `prix_point_vente` s'il existe, sinon `produit.prix_vente`.
 - RG-V2 : Une vente nécessite une session de caisse **ouverte** sur le point de vente.
 - RG-V3 : Le coût unitaire (CMUP) est **figé** sur la ligne au moment de la vente (calcul de marge).
@@ -164,19 +176,19 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 - RG-V5 : Remise au-delà d'un seuil ⇒ validation par un rôle gérant/propriétaire.
 - RG-V6 : Annulation d'une vente = mouvements de stock inverses + écritures inverses (jamais de suppression).
 
-### 5.5 Caisse
+### 5.7 Caisse
 - RG-C1 : Une seule session ouverte par caisse à la fois.
 - RG-C2 : Solde théorique = fond initial + encaissements − décaissements.
 - RG-C3 : À la clôture, l'utilisateur saisit le montant compté ; l'écart est enregistré et comptabilisé.
 - RG-C4 : Aucune opération possible sur une session fermée.
 - RG-C5 : Suivi séparé par mode de paiement (espèces, mobile money…).
 
-### 5.6 Charges & dépenses
+### 5.8 Charges & dépenses
 - RG-D1 : Toute dépense a une catégorie, elle-même liée à un compte de charge (classe 6).
 - RG-D2 : Une dépense payée en espèces génère un décaissement dans la session de caisse ouverte.
 - RG-D3 : Justificatif (photo) recommandé, obligatoire au-delà d'un montant paramétrable.
 
-### 5.7 Comptabilité
+### 5.9 Comptabilité
 - RG-K1 : **Partie double** : pour chaque écriture, Σ débit = Σ crédit.
 - RG-K2 : Les écritures sont **générées automatiquement** à partir des documents validés
   (vente, réception, paiement, dépense, inventaire, clôture de caisse).
@@ -212,7 +224,7 @@ Schémas d'écritures types (PCG 2005) :
 
 > Numéros de comptes à faire valider par un comptable malgache avant le sprint S6.
 
-### 5.8 Transverses
+### 5.10 Transverses
 - RG-X1 : Toutes les données sont dans une **base locale** (Room) ; l'app fonctionne entièrement sans internet.
 - RG-X1b : **Sauvegarde par WhatsApp** :
   - L'app crée une archive unique `tsena_sauvegarde_AAAAMMJJ_HHMM.zip` (base Room + dossier photos + fichier
@@ -278,7 +290,8 @@ app/src/main/java/mg/tsena/
 - Package `mg.tsena`, minSdk 26, Kotlin + Jetpack Compose + Room (KSP), pas de framework d'injection.
 - Chaque ViewModel expose un `Factory` qui récupère ses dépendances via `container`.
 - Les violations de règles métier lèvent `RegleMetierException` avec un message affichable.
-- **Schéma de base** : tout changement incrémente `TsenaDatabase.VERSION` et ajoute une `Migration`
+- **Schéma de base** : tant qu'aucune version n'est installée chez un marchand, le schéma version 1 est
+  modifié directement (désinstaller l'app de test après un changement). Ensuite, tout changement incrémente `TsenaDatabase.VERSION` et ajoute une `Migration`
   (jamais de migration destructive : les données du marchand et les anciennes sauvegardes doivent rester restaurables).
   Les schémas exportés dans `app/schemas/` sont versionnés.
 - Tests unitaires JVM dans `app/src/test` pour la logique sans Android.
@@ -293,3 +306,6 @@ app/src/main/java/mg/tsena/
 - **S0** (code écrit, non compilé dans l'environnement de génération) : projet, base Room (commerce,
   utilisateur, utilisateur_role, journal_audit), premier lancement, connexion par PIN (5 essais puis
   blocage 30 s), rôles et permissions, gestion des utilisateurs, sauvegarde WhatsApp et restauration.
+- **S1** (code écrit, non compilé) : catégories hiérarchiques, unités, produits avec photo (appareil photo
+  ou galerie, redimensionnée 1024 px, JPEG 80 %), recherche et filtre par catégorie, dépôts et points de vente.
+  Reporté : conversion_unite (S3), prix_point_vente et rattachement vendeur ↔ point de vente (S4).
