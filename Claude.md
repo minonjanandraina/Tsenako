@@ -437,3 +437,8 @@ app/src/main/java/mg/tsena/
   (`CompatibiliteSchema`, testé), liste des migrations, rapport d'erreur à envoyer après un plantage, version 1.0.0,
   signature et publication par étiquette (`release.yml`), cahier de tests terrain (`docs/TESTS_TERRAIN.md`).
   Reste à faire sur le terrain : tests du cahier, mesure des performances, relecture comptable, première publication.
+- **Démonstration** (APK debug uniquement) : bouton « Boutique de démonstration Tsenasabotsy » au premier lancement
+  (`demo/DonneesDemo.kt`) : boutique de vêtements, un seul dépôt « tsenasabotsy », 14 produits avec photos générées,
+  stock initial, 3 fournisseurs, commande reçue en partie, 3 clients, caisse ouverte, 4 ventes (dont gros à crédit),
+  2 dépenses, paiement fournisseur. Codes PIN : propriétaire 1234, gérante 2222, vendeuse 3333, magasinier 4444.
+  Grandes icônes de l'accueil : une couleur par module (`Module.couleur`).

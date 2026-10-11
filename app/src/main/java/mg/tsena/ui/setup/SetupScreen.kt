@@ -25,10 +25,14 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import mg.tsena.BuildConfig
 import mg.tsena.auth.AuthRepository
 import mg.tsena.auth.PinHasher
 import mg.tsena.container
+import mg.tsena.demo.DonneesDemo
 import mg.tsena.domain.RegleMetierException
 import mg.tsena.ui.common.ChampPin
 import mg.tsena.ui.common.ChampTexte
@@ -43,7 +47,7 @@ data class EtatSetup(
     val enCours: Boolean = false,
 )
 
-class SetupViewModel(private val auth: AuthRepository) : ViewModel() {
+class SetupViewModel(private val auth: AuthRepository, private val demo: DonneesDemo) : ViewModel() {
     var etat by mutableStateOf(EtatSetup())
         private set
 
@@ -74,9 +78,24 @@ class SetupViewModel(private val auth: AuthRepository) : ViewModel() {
         }
     }
 
+    /**
+     * Boutique de démonstration « Tsenasabotsy » (versions de test). Le chargement continue même quand l'accueil
+     * remplace cet écran, dès la création du commerce.
+     */
+    fun chargerDemo() {
+        etat = etat.copy(enCours = true, erreur = null)
+        viewModelScope.launch {
+            try {
+                withContext(NonCancellable) { demo.charger() }
+            } catch (ex: RegleMetierException) {
+                etat = etat.copy(enCours = false, erreur = ex.message)
+            }
+        }
+    }
+
     companion object {
         val Factory = viewModelFactory {
-            initializer { SetupViewModel(container.authRepository) }
+            initializer { SetupViewModel(container.authRepository, DonneesDemo(container)) }
         }
     }
 }
@@ -112,6 +131,19 @@ fun SetupScreen(onRestaurer: () -> Unit, vm: SetupViewModel = viewModel(factory 
         Text("Vous changez de téléphone ?", style = MaterialTheme.typography.titleSmall)
         OutlinedButton(onClick = onRestaurer, enabled = !e.enCours, modifier = largeur) {
             Text("Restaurer une sauvegarde")
+        }
+
+        if (BuildConfig.DEBUG) {
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text("Version de test", style = MaterialTheme.typography.titleSmall)
+            OutlinedButton(onClick = vm::chargerDemo, enabled = !e.enCours, modifier = largeur) {
+                Text("Boutique de démonstration « Tsenasabotsy »")
+            }
+            Text(
+                "Boutique de vêtements avec un seul dépôt « tsenasabotsy » : produits, stock, fournisseurs, clients, " +
+                    "caisse ouverte et ventes. Codes PIN : ${DonneesDemo.COMPTES}.",
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }

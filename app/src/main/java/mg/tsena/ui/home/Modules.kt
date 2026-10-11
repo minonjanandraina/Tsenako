@@ -1,6 +1,8 @@
 package mg.tsena.ui.home
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.res.painterResource
@@ -41,15 +44,21 @@ import mg.tsena.auth.UtilisateurConnecte
 import mg.tsena.domain.Permission
 import mg.tsena.ui.Routes
 
-/** Grandes icônes de l'accueil ; chacune ouvre la liste de ses écrans. */
-enum class Module(val titre: String) {
-    CATALOGUE("Catalogue"),
-    STOCKS("Stocks"),
-    VENTES("Ventes"),
-    APPRO("Approvisionnement"),
-    DEPENSES("Dépenses"),
-    COMPTABILITE("Comptabilité"),
+/**
+ * Grandes icônes de l'accueil ; chacune ouvre la liste de ses écrans.
+ * [couleur] : fond de la grande icône (texte blanc, contraste suffisant en thème clair comme sombre).
+ */
+enum class Module(val titre: String, val couleur: Color) {
+    CATALOGUE("Catalogue", Color(0xFF3949AB)),
+    STOCKS("Stocks", Color(0xFF00796B)),
+    VENTES("Ventes", Color(0xFFE65100)),
+    APPRO("Approvisionnement", Color(0xFF6D4C41)),
+    DEPENSES("Dépenses", Color(0xFFC62828)),
+    COMPTABILITE("Comptabilité", Color(0xFF6A1B9A)),
 }
+
+/** Couleur de la grande icône « Utilisateurs ». */
+val COULEUR_UTILISATEURS = Color(0xFF455A64)
 
 /** Écran proposé dans un module. [alerte] : texte affiché en rouge (alertes, transferts à recevoir). */
 class EntreeModule(
@@ -137,27 +146,38 @@ fun entreesModule(module: Module, u: UtilisateurConnecte, nbAlertes: Int, nbEnTr
     }
 }
 
-/** Grande icône de l'accueil. */
+/** Grande icône de l'accueil, sur fond [couleur] ; [alerte] dans une pastille blanche. */
 @Composable
-fun TuileModule(titre: String, icone: Painter, alerte: String?, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun TuileModule(titre: String, icone: Painter, alerte: String?, couleur: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier.height(120.dp).clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        colors = CardDefaults.cardColors(containerColor = couleur, contentColor = Color.White),
     ) {
         Column(
             Modifier.fillMaxSize().padding(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Icon(icone, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            Icon(icone, contentDescription = null, modifier = Modifier.size(48.dp), tint = Color.White)
             Text(
                 titre,
                 style = MaterialTheme.typography.titleSmall,
                 textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                color = Color.White,
                 modifier = Modifier.padding(top = 8.dp),
             )
-            alerte?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center) }
+            alerte?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFB71C1C),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .background(Color.White, RoundedCornerShape(50))
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                )
+            }
         }
     }
 }

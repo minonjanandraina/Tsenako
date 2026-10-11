@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalContext
@@ -137,7 +138,13 @@ class HomeViewModel(
 
 private const val UN_JOUR_MS = 24 * 60 * 60 * 1000L
 
-private class Tuile(val titre: String, val alerte: String?, val icone: @Composable () -> Painter, val onClick: () -> Unit)
+private class Tuile(
+    val titre: String,
+    val alerte: String?,
+    val couleur: Color,
+    val icone: @Composable () -> Painter,
+    val onClick: () -> Unit,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -207,19 +214,20 @@ fun HomeScreen(
                             module == Module.APPRO && nbEnTransit > 0 -> "$nbEnTransit en transit"
                             else -> null
                         },
+                        couleur = module.couleur,
                         icone = { iconeModule(module) },
                         onClick = { onOuvrir(Routes.module(module)) },
                     )
                 } + listOfNotNull(
                     if (utilisateur.peut(Permission.GERER_UTILISATEURS)) {
-                        Tuile("Utilisateurs", null, { rememberVectorPainter(Icons.Filled.Person) }, onUtilisateurs)
+                        Tuile("Utilisateurs", null, COULEUR_UTILISATEURS, { rememberVectorPainter(Icons.Filled.Person) }, onUtilisateurs)
                     } else {
                         null
                     }
                 )
             tuiles.chunked(2).forEach { rangee ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    rangee.forEach { t -> TuileModule(t.titre, t.icone(), t.alerte, t.onClick, Modifier.weight(1f)) }
+                    rangee.forEach { t -> TuileModule(t.titre, t.icone(), t.alerte, t.couleur, t.onClick, Modifier.weight(1f)) }
                     if (rangee.size == 1) Spacer(Modifier.weight(1f))
                 }
             }

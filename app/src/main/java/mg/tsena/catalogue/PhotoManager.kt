@@ -54,6 +54,14 @@ class PhotoManager(private val context: Context) {
         relatif
     }
 
+    /** Enregistre une image déjà prête (ex. photos générées pour les données de démonstration). */
+    suspend fun enregistrerImage(image: Bitmap): String = withContext(Dispatchers.IO) {
+        val relatif = "$DOSSIER_PRODUITS/${nouvelId()}.jpg"
+        val cible = File(racine, relatif).apply { parentFile?.mkdirs() }
+        cible.outputStream().use { image.compress(Bitmap.CompressFormat.JPEG, QUALITE_JPEG, it) }
+        relatif
+    }
+
     fun supprimer(cheminRelatif: String?) {
         if (cheminRelatif.isNullOrBlank()) return
         File(racine, cheminRelatif).delete()
