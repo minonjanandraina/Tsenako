@@ -1,6 +1,7 @@
 package mg.tsena.ui.vente
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,6 +59,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import mg.tsena.catalogue.CatalogueRepository
+import mg.tsena.catalogue.Categories
 import mg.tsena.catalogue.PhotoManager
 import mg.tsena.container
 import mg.tsena.credit.CreditClient
@@ -67,6 +70,7 @@ import mg.tsena.data.db.entity.ModePaiement
 import mg.tsena.data.db.entity.PointVenteAvecDepot
 import mg.tsena.data.db.entity.ProduitVente
 import mg.tsena.data.db.entity.SessionAvecDetails
+import mg.tsena.data.db.entity.TypeProduitEntity
 import mg.tsena.data.db.entity.TypeVente
 import mg.tsena.domain.AutorisationRequiseException
 import mg.tsena.domain.Montant
@@ -101,7 +105,26 @@ class VenteViewModel(
     private val ventes: VenteRepository,
     private val photos: PhotoManager,
     creditRepository: CreditRepository,
+    catalogue: CatalogueRepository,
 ) : ViewModel() {
+    val categories: StateFlow<List<TypeProduitEntity>> = catalogue.observerCategories()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Filtre par type de produit : catégorie principale, puis éventuellement une sous-catégorie (null = tous) */
+    var categorieRacine by mutableStateOf<String?>(null)
+        private set
+    var sousCategorie by mutableStateOf<String?>(null)
+        private set
+
+    fun filtrerCategorie(racine: String?) {
+        categorieRacine = racine
+        sousCategorie = null
+    }
+
+    fun filtrerSousCategorie(id: String?) {
+        sousCategorie = id
+    }
+
     /** Suivi des crédits par client, pour afficher l'impayé du client choisi */
     val credits: StateFlow<Map<String, CreditClient>> = creditRepository.observerCredits()
         .map { liste -> liste.associateBy { it.client.client.id } }
@@ -288,7 +311,9 @@ class VenteViewModel(
 
     companion object {
         fun factory(pointVenteId: String) = viewModelFactory {
-            initializer { VenteViewModel(pointVenteId, container.venteRepository, container.photoManager, container.creditRepository) }
+            initializer {
+                VenteViewModel(pointVenteId, container.venteRepository, container.photoManager, container.creditRepository, container.catalogueRepository)
+            }
         }
     }
 }
@@ -308,10 +333,26 @@ fun VenteScreen(
     val credits by vm.credits.collectAsStateWithLifecycle()
     var ongletPanier by rememberSaveable { mutableStateOf(false) }
 
-    val filtres = remember(catalogue, vm.recherche) {
+    val categories by vm.categories.collectAsStateWithLifecycle()
+    val parentDe = remember(categories) { categories.associate { it.id to it.parentId } }
+    // Seuls les articles en stock sont proposés à la vente
+    val enStock = remember(catalogue) { catalogue.filter { it.stockMilli > 0 } }
+    // Catégories principales et sous-catégories qui ont au moins un article en stock
+    val racines = remember(categories, enStock) {
+        categories.filter { c -> c.parentId == null && enStock.any { Categories.estDans(it.typeProduitId, c.id, parentDe::get) } }
+            .sortedBy { it.nom.lowercase() }
+    }
+    val sousCategories = remember(categories, enStock, vm.categorieRacine) {
+        val racine = vm.categorieRacine ?: return@remember emptyList<TypeProduitEntity>()
+        categories.filter { c -> c.parentId == racine && enStock.any { Categories.estDans(it.typeProduitId, c.id, parentDe::get) } }
+            .sortedBy { it.nom.lowercase() }
+    }
+    val filtres = remember(enStock, vm.recherche, vm.categorieRacine, vm.sousCategorie, parentDe) {
         val t = vm.recherche.trim()
-        catalogue.filter {
-            t.isEmpty() || it.nom.contains(t, ignoreCase = true) || it.code.contains(t, ignoreCase = true) || it.codeBarre == t
+        val categorie = vm.sousCategorie ?: vm.categorieRacine
+        enStock.filter {
+            (categorie == null || Categories.estDans(it.typeProduitId, categorie, parentDe::get)) &&
+                (t.isEmpty() || it.nom.contains(t, ignoreCase = true) || it.code.contains(t, ignoreCase = true) || it.codeBarre == t)
         }
     }
     val nbArticles = vm.panier.size
@@ -388,6 +429,27 @@ fun VenteScreen(
             }
 
             if (!ongletPanier) {
+                // Filtre par type de produit : « Tous » puis les catégories, et leurs sous-catégories
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(selected = vm.categorieRacine == null, onClick = { vm.filtrerCategorie(null) }, label = { Text("Tous") })
+                    racines.forEach { c ->
+                        FilterChip(selected = vm.categorieRacine == c.id, onClick = { vm.filtrerCategorie(c.id) }, label = { Text(c.nom) })
+                    }
+                }
+                if (sousCategories.isNotEmpty()) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FilterChip(selected = vm.sousCategorie == null, onClick = { vm.filtrerSousCategorie(null) }, label = { Text("Toutes") })
+                        sousCategories.forEach { c ->
+                            FilterChip(selected = vm.sousCategorie == c.id, onClick = { vm.filtrerSousCategorie(c.id) }, label = { Text(c.nom) })
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = vm.recherche,
                     onValueChange = { vm.recherche = it },
@@ -397,6 +459,14 @@ fun VenteScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 LazyColumn(Modifier.fillMaxSize()) {
+                    if (filtres.isEmpty()) {
+                        item {
+                            Text(
+                                if (enStock.isEmpty()) "Aucun article en stock dans ce point de vente." else "Aucun article en stock pour ce filtre.",
+                                Modifier.padding(16.dp),
+                            )
+                        }
+                    }
                     items(filtres, key = { it.produitId }) { p ->
                         val prix = vm.prix(p)
                         val dansPanier = vm.panier.firstOrNull { it.produit.produitId == p.produitId }?.quantiteMilli

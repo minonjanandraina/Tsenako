@@ -152,7 +152,7 @@ interface VenteDao {
     /** RG-V1 : prix du point de vente s'il existe, sinon prix du produit. Stock du dépôt de vente. */
     @Query(
         """
-        SELECT p.id AS produit_id, p.code, p.code_barre, p.nom, p.photo_chemin,
+        SELECT p.id AS produit_id, p.code, p.code_barre, p.nom, p.type_produit_id, p.photo_chemin,
                u.symbole AS unite_symbole, u.decimale AS unite_decimale,
                COALESCE(pp.prix_detail, p.prix_vente) AS prix_detail,
                COALESCE(pp.prix_gros, p.prix_vente_gros) AS prix_gros,
@@ -169,7 +169,7 @@ interface VenteDao {
 
     @Query(
         """
-        SELECT p.id AS produit_id, p.code, p.code_barre, p.nom, p.photo_chemin,
+        SELECT p.id AS produit_id, p.code, p.code_barre, p.nom, p.type_produit_id, p.photo_chemin,
                u.symbole AS unite_symbole, u.decimale AS unite_decimale,
                COALESCE(pp.prix_detail, p.prix_vente) AS prix_detail,
                COALESCE(pp.prix_gros, p.prix_vente_gros) AS prix_gros,

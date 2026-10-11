@@ -199,6 +199,8 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 ### 5.6 Ventes
 - RG-V0 : Au début de chaque vente, le vendeur choisit le type : **Détail** (par défaut) ou **Gros**.
   Le type ne change plus une fois la première ligne ajoutée.
+- RG-V0b : Écran de vente : seuls les articles **en stock** dans le dépôt du point de vente sont proposés ; filtre
+  « Tous » puis par catégorie (et sous-catégorie) en haut de la liste.
 - RG-V1 : Prix appliqué selon le type de vente : détail = `prix_point_vente.prix_detail` sinon `produit.prix_vente` ;
   gros = `prix_point_vente.prix_gros` sinon `produit.prix_vente_gros`.
 - RG-V2 : Une vente nécessite une session de caisse **ouverte** sur le point de vente.

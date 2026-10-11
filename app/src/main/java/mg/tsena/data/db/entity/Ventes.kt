@@ -275,6 +275,7 @@ data class ProduitVente(
     val code: String,
     @ColumnInfo(name = "code_barre") val codeBarre: String?,
     val nom: String,
+    @ColumnInfo(name = "type_produit_id") val typeProduitId: String,
     @ColumnInfo(name = "photo_chemin") val photoChemin: String,
     @ColumnInfo(name = "unite_symbole") val uniteSymbole: String,
     @ColumnInfo(name = "unite_decimale") val uniteDecimale: Boolean,
