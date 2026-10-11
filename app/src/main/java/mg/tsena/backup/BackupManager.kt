@@ -3,6 +3,8 @@ package mg.tsena.backup
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteException
 import android.net.Uri
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
@@ -84,13 +86,47 @@ class BackupManager(
         entree.use { input -> fichierRecu.outputStream().use { input.copyTo(it) } }
 
         val meta = fichierRecu.inputStream().buffered().use { BackupArchive.lire(it, dossierExtrait) }
-        if (meta.versionSchema > TsenaDatabase.VERSION) {
-            throw SauvegardeInvalideException(
-                "Cette sauvegarde vient d'une version plus récente de Tsena. Mettez l'application à jour."
-            )
-        }
+        verifierBase(File(dossierExtrait, BackupArchive.ENTREE_BASE))
         meta
     }
+
+    /**
+     * Vérifie la base extraite avant de remplacer les données : intégrité SQLite, version et empreinte du schéma
+     * (une base incompatible empêcherait l'app de démarrer), et présence d'un commerce.
+     */
+    private fun verifierBase(fichier: File) {
+        val hashAttendu = lireHash(db.openHelper.readableDatabase.query("SELECT identity_hash FROM room_master_table LIMIT 1"))
+        try {
+            // Lecture-écriture : une base en mode WAL ne s'ouvre pas toujours en lecture seule ; rien n'y est écrit
+            SQLiteDatabase.openDatabase(fichier.path, null, SQLiteDatabase.OPEN_READWRITE).use { base ->
+                val integrite = base.rawQuery("PRAGMA integrity_check", null).use { if (it.moveToFirst()) it.getString(0) else null }
+                if (integrite != "ok") throw SauvegardeInvalideException("La sauvegarde est endommagée.")
+                val version = base.version
+                val hash = if (tableExiste(base, "room_master_table")) {
+                    lireHash(base.rawQuery("SELECT identity_hash FROM room_master_table LIMIT 1", null))
+                } else {
+                    null
+                }
+                val verdict = CompatibiliteSchema.verifier(
+                    versionBase = version,
+                    hashBase = hash,
+                    versionActuelle = TsenaDatabase.VERSION,
+                    hashAttendu = hashAttendu,
+                    migrations = TsenaDatabase.MIGRATIONS.map { it.startVersion to it.endVersion },
+                )
+                if (verdict is CompatibiliteSchema.Verdict.Refusee) throw SauvegardeInvalideException(verdict.raison)
+                val commerces = base.rawQuery("SELECT COUNT(*) FROM commerce", null).use { if (it.moveToFirst()) it.getInt(0) else 0 }
+                if (commerces == 0) throw SauvegardeInvalideException("La sauvegarde ne contient aucun commerce.")
+            }
+        } catch (e: SQLiteException) {
+            throw SauvegardeInvalideException("La sauvegarde est illisible.", e)
+        }
+    }
+
+    private fun tableExiste(base: SQLiteDatabase, table: String): Boolean =
+        base.rawQuery("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", arrayOf(table)).use { it.moveToFirst() }
+
+    private fun lireHash(curseur: android.database.Cursor): String? = curseur.use { if (it.moveToFirst()) it.getString(0) else null }
 
     /** Remplace la base et les photos par celles de la sauvegarde vérifiée. L'app doit ensuite redémarrer. */
     suspend fun appliquerRestauration() = withContext(Dispatchers.IO) {

@@ -59,6 +59,7 @@ import mg.tsena.backup.BackupManager
 import mg.tsena.container
 import mg.tsena.data.db.entity.CommerceEntity
 import mg.tsena.domain.Permission
+import mg.tsena.erreurs.JournalErreurs
 import mg.tsena.domain.formaterDateHeure
 import mg.tsena.domain.maintenant
 import mg.tsena.stock.StockRepository
@@ -70,7 +71,11 @@ class HomeViewModel(
     private val backup: BackupManager,
     stock: StockRepository,
     appro: ApproRepository,
+    private val erreurs: JournalErreurs,
 ) : ViewModel() {
+    /** Rapport du dernier plantage, à envoyer pendant les tests terrain */
+    val rapportErreur: StateFlow<String?> = erreurs.rapport
+
     val derniereSauvegarde: StateFlow<Long?> = backup.derniereSauvegarde
     val nbAlertes: StateFlow<Int> = stock.observerAlertes().map { it.size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
@@ -101,6 +106,16 @@ class HomeViewModel(
         }
     }
 
+    fun envoyerRapport() {
+        val texte = rapportErreur.value ?: return
+        viewModelScope.launch { _partage.send(erreurs.intentEnvoi(texte)) }
+        erreurs.effacer()
+    }
+
+    fun ignorerRapport() {
+        erreurs.effacer()
+    }
+
     fun deconnecter() {
         viewModelScope.launch { auth.deconnecter() }
     }
@@ -108,7 +123,13 @@ class HomeViewModel(
     companion object {
         val Factory = viewModelFactory {
             initializer {
-                HomeViewModel(container.authRepository, container.backupManager, container.stockRepository, container.approRepository)
+                HomeViewModel(
+                    container.authRepository,
+                    container.backupManager,
+                    container.stockRepository,
+                    container.approRepository,
+                    container.journalErreurs,
+                )
             }
         }
     }
@@ -160,6 +181,19 @@ fun HomeScreen(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            val rapportErreur by vm.rapportErreur.collectAsStateWithLifecycle()
+            if (rapportErreur != null) {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("L'application s'est arrêtée de façon inattendue", style = MaterialTheme.typography.titleMedium)
+                        Text("Envoyez le rapport technique (erreur, version, modèle du téléphone) pour aider à corriger le problème.")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = vm::envoyerRapport, modifier = Modifier.weight(1f)) { Text("Envoyer") }
+                            OutlinedButton(onClick = vm::ignorerRapport, modifier = Modifier.weight(1f)) { Text("Ignorer") }
+                        }
+                    }
+                }
+            }
             val nbAlertes by vm.nbAlertes.collectAsStateWithLifecycle()
             val nbEnTransit by vm.nbTransfertsEnTransit.collectAsStateWithLifecycle()
             // Grandes icônes : modules accessibles, puis la gestion des utilisateurs

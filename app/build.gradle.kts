@@ -14,11 +14,27 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
+    }
+
+    // Clé de signature de production : jamais dans le dépôt, fournie par des variables d'environnement
+    // (secrets GitHub dans .github/workflows/release.yml). Sans elle, l'APK de production n'est pas signé.
+    val keystore = System.getenv("TSENA_KEYSTORE")
+    signingConfigs {
+        if (keystore != null) {
+            create("production") {
+                storeFile = file(keystore)
+                storePassword = System.getenv("TSENA_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("TSENA_KEY_ALIAS")
+                keyPassword = System.getenv("TSENA_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
+            if (keystore != null) signingConfig = signingConfigs.getByName("production")
+            // R8 désactivé pour la 1.0 : à activer après des tests sur téléphone de la version optimisée
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

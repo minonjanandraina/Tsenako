@@ -308,6 +308,11 @@ Schémas d'écritures types (PCG 2005) :
 - RG-X1c : **Restauration** : l'utilisateur ouvre le fichier `.zip` reçu dans WhatsApp (« Ouvrir avec Tsena »)
   ou le choisit dans les fichiers du téléphone. L'app vérifie l'archive et la version du schéma, demande
   confirmation (les données actuelles sont remplacées), puis redémarre. Réservé au rôle propriétaire.
+- RG-X1d : **Vérification avant restauration** : intégrité SQLite, présence d'un commerce, version et empreinte
+  du schéma Room. Refus (données actuelles intactes) si la sauvegarde vient d'une version plus récente, d'une
+  version de test au même numéro mais de structure différente, ou d'une version trop ancienne sans migration.
+- RG-X5b : **Rapport d'erreur** : un arrêt inattendu est enregistré ; au démarrage suivant, l'accueil propose de
+  l'envoyer (texte technique, choix de l'utilisateur) ou de l'ignorer.
 - RG-X2 : Accès par rôle : le vendeur ne voit que son point de vente ; le propriétaire voit tout.
   Plusieurs utilisateurs peuvent partager le téléphone : chacun se connecte avec son code PIN.
 - RG-X3 : Journal d'audit (qui a fait quoi, quand) sur toutes les opérations sensibles.
@@ -369,6 +374,17 @@ app/src/main/java/mg/tsena/
   Les schémas exportés dans `app/schemas/` sont versionnés.
 - Tests unitaires JVM dans `app/src/test` pour la logique sans Android.
 
+### Publication (version signée)
+1. Créer une fois la clé (à conserver précieusement hors du dépôt : sans elle, plus de mise à jour possible) :
+   `keytool -genkey -v -keystore tsena.jks -alias tsena -keyalg RSA -keysize 2048 -validity 10000`
+2. Secrets du dépôt GitHub : `TSENA_KEYSTORE_BASE64` (`base64 -w0 tsena.jks`), `TSENA_KEYSTORE_PASSWORD`,
+   `TSENA_KEY_ALIAS`, `TSENA_KEY_PASSWORD`.
+3. `git tag v1.0.0 && git push origin v1.0.0` : le workflow `release.yml` teste, signe et publie l'APK dans une
+   version GitHub (avec les schémas Room en artefact).
+4. **Après la première installation chez un marchand**, le schéma est figé : committer `app/schemas/.../1.json`
+   (artefact de la CI) ; tout changement incrémente `TsenaDatabase.VERSION` et ajoute une migration dans
+   `TsenaDatabase.MIGRATIONS` (aussi utilisée pour accepter les anciennes sauvegardes).
+
 ### Commandes
 - `./gradlew assembleDebug` — compiler l'APK
 - `./gradlew testDebugUnitTest` — tests unitaires
@@ -417,3 +433,7 @@ app/src/main/java/mg/tsena/
 - **Accueil** : grandes icônes par module (Catalogue, Stocks, Ventes, Approvisionnement, Dépenses, Comptabilité,
   Utilisateurs), visibles selon les permissions ; un appui ouvre la liste des écrans du module (`ui/home/Modules.kt`).
   Prix d'achat facultatif par produit (RG-P10).
+- **S8** (code écrit, non compilé localement) : vérification complète des sauvegardes avant restauration
+  (`CompatibiliteSchema`, testé), liste des migrations, rapport d'erreur à envoyer après un plantage, version 1.0.0,
+  signature et publication par étiquette (`release.yml`), cahier de tests terrain (`docs/TESTS_TERRAIN.md`).
+  Reste à faire sur le terrain : tests du cahier, mesure des performances, relecture comptable, première publication.

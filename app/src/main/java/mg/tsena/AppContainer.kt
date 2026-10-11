@@ -14,6 +14,7 @@ import mg.tsena.catalogue.PhotoManager
 import mg.tsena.compta.ComptaRepository
 import mg.tsena.compta.Comptable
 import mg.tsena.data.db.TsenaDatabase
+import mg.tsena.erreurs.JournalErreurs
 import mg.tsena.finance.FinanceRepository
 import mg.tsena.lieux.LieuRepository
 import mg.tsena.rapports.RapportRepository
@@ -22,6 +23,7 @@ import mg.tsena.vente.VenteRepository
 
 /** Injection de dépendances manuelle : une seule instance de chaque service pour toute l'app. */
 class AppContainer(context: Context) {
+    val journalErreurs = JournalErreurs(context)
     val database = TsenaDatabase.creer(context)
     val session = SessionManager()
     val audit = AuditLogger(database.journalAuditDao(), session)
@@ -46,6 +48,7 @@ class TsenaApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        container.journalErreurs.installer()
     }
 }
 

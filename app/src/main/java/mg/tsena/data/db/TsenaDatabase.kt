@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import mg.tsena.data.db.dao.CaisseDao
 import mg.tsena.data.db.dao.CategorieDepenseDao
@@ -268,9 +269,16 @@ abstract class TsenaDatabase : RoomDatabase() {
         const val VERSION = 1
         const val NOM_FICHIER = "tsena.db"
 
+        /**
+         * Migrations du schéma, à compléter à chaque nouvelle version (jamais de migration destructive).
+         * Utilisées aussi pour accepter la restauration d'une sauvegarde plus ancienne.
+         */
+        val MIGRATIONS: Array<Migration> = arrayOf()
+
         fun creer(context: Context): TsenaDatabase =
             Room.databaseBuilder(context, TsenaDatabase::class.java, NOM_FICHIER)
                 .addCallback(DonneesInitiales)
+                .addMigrations(*MIGRATIONS)
                 .build()
 
         /** Unités proposées à la création de la base ; le marchand peut en ajouter. */
