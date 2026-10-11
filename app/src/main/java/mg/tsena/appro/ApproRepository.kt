@@ -5,6 +5,10 @@ import kotlinx.coroutines.flow.Flow
 import mg.tsena.auth.ActionAudit
 import mg.tsena.auth.AuditLogger
 import mg.tsena.auth.SessionManager
+import mg.tsena.compta.Comptable
+import mg.tsena.compta.PieceComptable
+import mg.tsena.compta.ReglesComptables
+import mg.tsena.data.db.entity.Journal
 import mg.tsena.data.db.TsenaDatabase
 import mg.tsena.data.db.entity.CommandeAvecDetails
 import mg.tsena.data.db.entity.CommandeFournisseurEntity
@@ -51,6 +55,7 @@ class ApproRepository(
     private val session: SessionManager,
     private val audit: AuditLogger,
     private val stock: StockRepository,
+    private val comptable: Comptable,
 ) {
     private val fournisseurDao = db.fournisseurDao()
     private val conversionDao = db.conversionUniteDao()
@@ -270,7 +275,7 @@ class ApproRepository(
      * Valide une réception : entrée en stock au coût d'achat (CMUP recalculé), mise à jour des quantités
      * reçues et du statut de la commande. Avec une commande, le fournisseur et le dépôt sont ceux de la commande ;
      * un produit hors commande est accepté. Le montant total devient une dette fournisseur (RG-A3).
-     * Renvoie l'id de la réception. L'écriture comptable (607 / 401) viendra au sprint S6.
+     * Renvoie l'id de la réception. Écriture 607 / 401 au journal des achats.
      */
     suspend fun validerReception(
         commandeId: String?,
@@ -322,6 +327,10 @@ class ApproRepository(
                 }
             )
 
+            comptable.passer(
+                Journal.AC, "Réception ${reception.numero} : ${fournisseur.nom}",
+                ReglesComptables.achat(reception.montantTotal, fournisseur.id), PieceComptable(DOCUMENT_RECEPTION, reception.id),
+            )
             if (commande != null) {
                 val statut = Approvisionnement.statutApresReception(
                     commandeDao.lignes(commande.id).map { it.quantiteMilli to it.quantiteRecueMilli }
@@ -398,6 +407,11 @@ class ApproRepository(
                         montant = montants.getValue(ligneId),
                     )
                 }
+            )
+            val fournisseurNom = db.fournisseurDao().get(reception.fournisseurId)?.nom.orEmpty()
+            comptable.passer(
+                Journal.AC, "Retour ${retour.numero} à $fournisseurNom",
+                ReglesComptables.retourAchat(retour.montant, reception.fournisseurId), PieceComptable(DOCUMENT_RETOUR_FOURNISSEUR, retour.id),
             )
             audit.enregistrer(ActionAudit.RETOUR_FOURNISSEUR, "${retour.numero} (${reception.numero}) : ${Montant.formater(retour.montant)}")
             retour.montant

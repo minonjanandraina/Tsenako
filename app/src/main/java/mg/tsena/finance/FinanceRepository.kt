@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.map
 import mg.tsena.auth.ActionAudit
 import mg.tsena.auth.AuditLogger
 import mg.tsena.auth.SessionManager
+import mg.tsena.compta.Comptable
+import mg.tsena.compta.PieceComptable
+import mg.tsena.compta.ReglesComptables
 import mg.tsena.data.db.TsenaDatabase
 import mg.tsena.data.db.entity.CategorieDepenseEntity
 import mg.tsena.data.db.entity.DepenseAvecDetails
@@ -36,6 +39,7 @@ class FinanceRepository(
     private val db: TsenaDatabase,
     private val session: SessionManager,
     private val audit: AuditLogger,
+    private val comptable: Comptable,
 ) {
     private val categorieDao = db.categorieDepenseDao()
     private val depenseDao = db.depenseDao()
@@ -63,6 +67,9 @@ class FinanceRepository(
             throw RegleMetierException("Le compte doit être un compte de charge de la classe 6 (ex. 613).")
         }
         db.withTransaction {
+            if (db.compteDao().get(compte) == null) {
+                throw RegleMetierException("Le compte $compte n'existe pas : créez-le d'abord dans le plan comptable.")
+            }
             if (categorieDao.compterParNom(nomPropre, id ?: "") > 0) throw RegleMetierException("La catégorie « $nomPropre » existe déjà.")
             if (id == null) {
                 categorieDao.inserer(CategorieDepenseEntity(nom = nomPropre, compteNumero = compte, createdBy = auteur.id))
@@ -99,7 +106,7 @@ class FinanceRepository(
     /**
      * Enregistre une dépense. Espèces / mobile money : décaissement dans la caisse ouverte de [pointVenteId] (RG-D2) ;
      * banque / hors caisse : aucune opération de caisse. Justificatif obligatoire au-delà du seuil (RG-D3).
-     * L'écriture comptable (6x / 53) viendra au sprint S6.
+     * Écriture : compte de charge de la catégorie / trésorerie.
      */
     suspend fun enregistrerDepense(
         categorieId: String,
@@ -134,6 +141,10 @@ class FinanceRepository(
                 DOCUMENT_DEPENSE, depense.id, "Dépense ${depense.numero} : ${categorie.nom}", auteur.id,
             )
             depenseDao.inserer(depense.copy(sessionCaisseId = sessionId))
+            comptable.passer(
+                ReglesComptables.journalReglement(mode), "Dépense ${depense.numero} : ${categorie.nom}",
+                ReglesComptables.depense(montant, categorie.compteNumero, mode), PieceComptable(DOCUMENT_DEPENSE, depense.id),
+            )
             audit.enregistrer(ActionAudit.DEPENSE, "${depense.numero} : ${categorie.nom}, ${Montant.formater(montant)}")
             depense.id
         }
@@ -168,6 +179,7 @@ class FinanceRepository(
             depenseDao.modifier(
                 depense.copy(statut = StatutDepense.ANNULEE, dateAnnulation = date, annuleePar = auteur.id, motifAnnulation = texte, updatedAt = date)
             )
+            comptable.contrePasser(PieceComptable(DOCUMENT_DEPENSE, depense.id), "Annulation dépense ${depense.numero}")
             audit.enregistrer(ActionAudit.ANNULATION_DEPENSE, "${depense.numero} : $texte")
         }
     }
@@ -220,6 +232,10 @@ class FinanceRepository(
                 DOCUMENT_PAIEMENT_FOURNISSEUR, paiement.id, "Paiement ${fournisseur.nom} (${paiement.numero})", auteur.id,
             )
             paiementDao.inserer(paiement.copy(sessionCaisseId = sessionId))
+            comptable.passer(
+                ReglesComptables.journalReglement(mode), "Paiement ${fournisseur.nom} (${paiement.numero})",
+                ReglesComptables.paiementFournisseur(montant, mode, fournisseurId), PieceComptable(DOCUMENT_PAIEMENT_FOURNISSEUR, paiement.id),
+            )
             audit.enregistrer(ActionAudit.PAIEMENT_FOURNISSEUR, "${paiement.numero} : ${fournisseur.nom}, ${Montant.formater(montant)}")
         }
     }
@@ -251,6 +267,10 @@ class FinanceRepository(
                 DOCUMENT_ENCAISSEMENT, encaissement.id, "Remboursement ${client.nom} (${encaissement.numero})", auteur.id,
             )
             encaissementDao.inserer(encaissement.copy(sessionCaisseId = sessionId))
+            comptable.passer(
+                ReglesComptables.journalReglement(mode), "Remboursement ${client.nom} (${encaissement.numero})",
+                ReglesComptables.reglementClient(montant, mode, clientId), PieceComptable(DOCUMENT_ENCAISSEMENT, encaissement.id),
+            )
             audit.enregistrer(ActionAudit.ENCAISSEMENT_CLIENT, "${encaissement.numero} : ${client.nom}, ${Montant.formater(montant)}")
         }
     }

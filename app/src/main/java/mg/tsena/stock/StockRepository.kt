@@ -5,6 +5,10 @@ import kotlinx.coroutines.flow.Flow
 import mg.tsena.auth.ActionAudit
 import mg.tsena.auth.AuditLogger
 import mg.tsena.auth.SessionManager
+import mg.tsena.compta.Comptable
+import mg.tsena.compta.PieceComptable
+import mg.tsena.compta.ReglesComptables
+import mg.tsena.data.db.entity.Journal
 import mg.tsena.data.db.TsenaDatabase
 import mg.tsena.data.db.entity.AlerteStock
 import mg.tsena.data.db.entity.InventaireAvecDepot
@@ -30,6 +34,7 @@ class StockRepository(
     private val db: TsenaDatabase,
     private val session: SessionManager,
     private val audit: AuditLogger,
+    private val comptable: Comptable,
 ) {
     private val dao = db.stockDao()
     private val inventaireDao = db.inventaireDao()
@@ -116,6 +121,11 @@ class StockRepository(
         db.withTransaction {
             val produit = verifierProduitEtDepot(produitId, depotId)
             enregistrerMouvement(produitId, depotId, TypeMouvement.STOCK_INITIAL, quantiteMilli, coutUnitaire, auteurId = auteur.id)
+            // Stock apporté au commerce : 37 / 101
+            comptable.passer(
+                Journal.OD, "Stock initial : $produit",
+                ReglesComptables.stockInitial(Valorisation.valeur(quantiteMilli, coutUnitaire)),
+            )
             audit.enregistrer(ActionAudit.STOCK_INITIAL, "$produit : ${Quantite.formater(quantiteMilli)}")
         }
     }
@@ -183,7 +193,7 @@ class StockRepository(
     /**
      * Valide l'inventaire : pour chaque produit compté, l'écart avec le stock actuel du dépôt
      * devient un mouvement AJUSTEMENT. Les produits non comptés ne sont pas modifiés.
-     * Renvoie le nombre d'ajustements. L'écriture comptable de perte/gain viendra au sprint S6.
+     * Renvoie le nombre d'ajustements. La variation de stock est passée en comptabilité (RG-K7).
      */
     suspend fun validerInventaire(inventaireId: String): Int {
         val auteur = session.exiger(Permission.GERER_STOCK)
@@ -212,6 +222,8 @@ class StockRepository(
                 inventaire.copy(statut = StatutInventaire.VALIDE, dateValidation = date, validePar = auteur.id, updatedAt = date)
             )
             val depot = db.lieuDao().getDepot(inventaire.depotId)?.nom.orEmpty()
+            // RG-K7 : le compte 37 suit la valeur du stock après l'inventaire (6037 en contrepartie)
+            comptable.ajusterStock("Variation de stock (inventaire $depot)", PieceComptable(DOCUMENT_INVENTAIRE, inventaireId))
             audit.enregistrer(ActionAudit.VALIDATION_INVENTAIRE, "$depot : $ajustements ajustement(s)")
             ajustements
         }

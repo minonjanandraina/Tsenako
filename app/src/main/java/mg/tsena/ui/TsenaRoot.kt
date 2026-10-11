@@ -36,6 +36,10 @@ import mg.tsena.ui.appro.TransfertFormScreen
 import mg.tsena.ui.appro.TransfertScreen
 import mg.tsena.ui.appro.TransfertsScreen
 import mg.tsena.ui.catalogue.CategoriesScreen
+import mg.tsena.ui.compta.ComptabiliteScreen
+import mg.tsena.ui.compta.GrandLivreScreen
+import mg.tsena.ui.compta.JournauxScreen
+import mg.tsena.ui.compta.PlanComptableScreen
 import mg.tsena.ui.catalogue.ProduitFormScreen
 import mg.tsena.ui.catalogue.ProduitsScreen
 import mg.tsena.ui.catalogue.UnitesScreen
@@ -91,6 +95,10 @@ object Routes {
     const val DEPENSES = "depenses"
     const val DEPENSE_FORM = "depense-saisie"
     const val CATEGORIES_DEPENSES = "depenses/categories"
+    const val COMPTABILITE = "comptabilite"
+    const val JOURNAUX = "comptabilite/journaux"
+    const val PLAN_COMPTABLE = "comptabilite/plan"
+    const val GRAND_LIVRE = "comptabilite/compte/{numero}"
 
     fun produit(id: String?) = if (id == null) "produit" else "produit?id=$id"
     fun ficheStock(produitId: String, depotId: String) = "stocks/fiche/$produitId/$depotId"
@@ -104,6 +112,7 @@ object Routes {
     fun venteDetail(id: String) = "ventes/$id"
     fun fournisseur(id: String) = "fournisseurs/$id"
     fun client(id: String) = "clients/$id"
+    fun grandLivre(numero: String) = "comptabilite/compte/$numero"
 }
 
 private val TYPES_SAUVEGARDE = arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")
@@ -340,6 +349,25 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
         }
         composable(Routes.DEPENSE_FORM) { DepenseFormScreen(onTermine = { nav.popBackStack() }) }
         composable(Routes.CATEGORIES_DEPENSES) { CategoriesDepenseScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.COMPTABILITE) {
+            ComptabiliteScreen(
+                peutCloturer = etat.utilisateur.peut(Permission.GERER_COMPTABILITE),
+                onRetour = { nav.popBackStack() },
+                onJournaux = { nav.navigate(Routes.JOURNAUX) },
+                onPlan = { nav.navigate(Routes.PLAN_COMPTABLE) },
+            )
+        }
+        composable(Routes.JOURNAUX) { JournauxScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.PLAN_COMPTABLE) {
+            PlanComptableScreen(
+                peutCreer = etat.utilisateur.peut(Permission.GERER_COMPTABILITE),
+                onRetour = { nav.popBackStack() },
+                onCompte = { numero -> nav.navigate(Routes.grandLivre(numero)) },
+            )
+        }
+        composable(Routes.GRAND_LIVRE) { entree ->
+            GrandLivreScreen(numero = entree.arguments?.getString("numero").orEmpty(), onRetour = { nav.popBackStack() })
+        }
         composable(Routes.PRIX_POINTS_VENTE) { PrixPointVenteScreen(onRetour = { nav.popBackStack() }) }
         composable(Routes.TRANSFERT) { entree ->
             TransfertScreen(transfertId = entree.arguments?.getString("id").orEmpty(), onRetour = { nav.popBackStack() })

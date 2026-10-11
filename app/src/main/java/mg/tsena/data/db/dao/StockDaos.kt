@@ -65,6 +65,10 @@ interface StockDao {
     )
     fun observerAlertes(): Flow<List<AlerteStock>>
 
+    /** Toutes les lignes de stock, pour la valeur totale (RG-K7). */
+    @Query("SELECT * FROM stock")
+    suspend fun tous(): List<StockEntity>
+
     @Query("SELECT * FROM stock WHERE produit_id = :produitId AND depot_id = :depotId")
     suspend fun get(produitId: String, depotId: String): StockEntity?
 

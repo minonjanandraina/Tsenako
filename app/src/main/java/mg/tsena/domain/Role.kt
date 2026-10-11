@@ -18,6 +18,8 @@ enum class Permission {
     ACCORDER_REMISE,
     /** RG-V6 : annulation d'une vente */
     ANNULER_VENTE,
+    /** Plan comptable (sous-comptes) et clôture des exercices : propriétaire uniquement */
+    GERER_COMPTABILITE,
     /** Paramètres du commerce (stock négatif…) : propriétaire uniquement */
     PARAMETRER_COMMERCE,
 }

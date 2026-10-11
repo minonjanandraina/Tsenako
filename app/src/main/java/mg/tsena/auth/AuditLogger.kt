@@ -61,6 +61,9 @@ enum class ActionAudit {
     PAIEMENT_FOURNISSEUR,
     ENCAISSEMENT_CLIENT,
     RETOUR_FOURNISSEUR,
+    CREATION_COMPTE,
+    VARIATION_STOCK,
+    CLOTURE_EXERCICE,
 }
 
 class AuditLogger(private val dao: JournalAuditDao, private val session: SessionManager) {

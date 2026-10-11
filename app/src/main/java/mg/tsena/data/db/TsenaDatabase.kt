@@ -12,9 +12,12 @@ import mg.tsena.data.db.dao.CategorieDepenseDao
 import mg.tsena.data.db.dao.ClientDao
 import mg.tsena.data.db.dao.CommandeDao
 import mg.tsena.data.db.dao.CommerceDao
+import mg.tsena.data.db.dao.CompteDao
 import mg.tsena.data.db.dao.ConversionUniteDao
 import mg.tsena.data.db.dao.DepenseDao
+import mg.tsena.data.db.dao.EcritureDao
 import mg.tsena.data.db.dao.EncaissementClientDao
+import mg.tsena.data.db.dao.ExerciceDao
 import mg.tsena.data.db.dao.FournisseurDao
 import mg.tsena.data.db.dao.InventaireDao
 import mg.tsena.data.db.dao.JournalAuditDao
@@ -35,14 +38,19 @@ import mg.tsena.data.db.entity.CategorieDepenseEntity
 import mg.tsena.data.db.entity.ClientEntity
 import mg.tsena.data.db.entity.CommandeFournisseurEntity
 import mg.tsena.data.db.entity.CommerceEntity
+import mg.tsena.data.db.entity.CompteEntity
 import mg.tsena.data.db.entity.ConversionUniteEntity
 import mg.tsena.data.db.entity.DepenseEntity
 import mg.tsena.data.db.entity.DepotEntity
+import mg.tsena.data.db.entity.EcritureEntity
 import mg.tsena.data.db.entity.EncaissementClientEntity
+import mg.tsena.data.db.entity.ExerciceEntity
 import mg.tsena.data.db.entity.FournisseurEntity
 import mg.tsena.data.db.entity.InventaireEntity
+import mg.tsena.data.db.entity.Journal
 import mg.tsena.data.db.entity.JournalAuditEntity
 import mg.tsena.data.db.entity.LigneCommandeEntity
+import mg.tsena.data.db.entity.LigneEcritureEntity
 import mg.tsena.data.db.entity.LigneInventaireEntity
 import mg.tsena.data.db.entity.LigneReceptionEntity
 import mg.tsena.data.db.entity.LigneRetourFournisseurEntity
@@ -63,12 +71,14 @@ import mg.tsena.data.db.entity.RetourVenteEntity
 import mg.tsena.data.db.entity.SessionCaisseEntity
 import mg.tsena.data.db.entity.StatutCommande
 import mg.tsena.data.db.entity.StatutDepense
+import mg.tsena.data.db.entity.StatutExercice
 import mg.tsena.data.db.entity.StatutInventaire
 import mg.tsena.data.db.entity.StatutSession
 import mg.tsena.data.db.entity.StatutTransfert
 import mg.tsena.data.db.entity.StatutVente
 import mg.tsena.data.db.entity.StockEntity
 import mg.tsena.data.db.entity.TransfertEntity
+import mg.tsena.data.db.entity.TypeCompte
 import mg.tsena.data.db.entity.TypeMouvement
 import mg.tsena.data.db.entity.TypeOperationCaisse
 import mg.tsena.data.db.entity.TypePaiement
@@ -154,6 +164,24 @@ class Converters {
 
     @TypeConverter
     fun texteVersStatutDepense(texte: String): StatutDepense = StatutDepense.valueOf(texte)
+
+    @TypeConverter
+    fun statutExerciceVersTexte(valeur: StatutExercice): String = valeur.name
+
+    @TypeConverter
+    fun texteVersStatutExercice(texte: String): StatutExercice = StatutExercice.valueOf(texte)
+
+    @TypeConverter
+    fun typeCompteVersTexte(valeur: TypeCompte): String = valeur.name
+
+    @TypeConverter
+    fun texteVersTypeCompte(texte: String): TypeCompte = TypeCompte.valueOf(texte)
+
+    @TypeConverter
+    fun journalVersTexte(valeur: Journal): String = valeur.name
+
+    @TypeConverter
+    fun texteVersJournal(texte: String): Journal = Journal.valueOf(texte)
 }
 
 @Database(
@@ -195,6 +223,10 @@ class Converters {
         EncaissementClientEntity::class,
         RetourFournisseurEntity::class,
         LigneRetourFournisseurEntity::class,
+        ExerciceEntity::class,
+        CompteEntity::class,
+        EcritureEntity::class,
+        LigneEcritureEntity::class,
     ],
     version = TsenaDatabase.VERSION,
     exportSchema = true,
@@ -224,6 +256,9 @@ abstract class TsenaDatabase : RoomDatabase() {
     abstract fun paiementFournisseurDao(): PaiementFournisseurDao
     abstract fun retourFournisseurDao(): RetourFournisseurDao
     abstract fun encaissementClientDao(): EncaissementClientDao
+    abstract fun compteDao(): CompteDao
+    abstract fun exerciceDao(): ExerciceDao
+    abstract fun ecritureDao(): EcritureDao
 
     companion object {
         /**
@@ -268,9 +303,49 @@ abstract class TsenaDatabase : RoomDatabase() {
             "Divers" to "628",
         )
 
+        /**
+         * RG-K3 : comptes de base du PCG 2005 utilisés par l'app (numéro, libellé, type). La classe est le premier
+         * chiffre. Numéros à faire valider par un comptable malgache.
+         */
+        private val PLAN_COMPTABLE = listOf(
+            Triple("101", "Capital", TypeCompte.CAPITAUX),
+            Triple("108", "Compte de l'exploitant", TypeCompte.CAPITAUX),
+            Triple("120", "Résultat net : bénéfice", TypeCompte.CAPITAUX),
+            Triple("129", "Résultat net : perte", TypeCompte.CAPITAUX),
+            Triple("218", "Autres immobilisations corporelles", TypeCompte.ACTIF),
+            Triple("37", "Stocks de marchandises", TypeCompte.ACTIF),
+            Triple("401", "Fournisseurs", TypeCompte.PASSIF),
+            Triple("411", "Clients", TypeCompte.ACTIF),
+            Triple("421", "Personnel, rémunérations dues", TypeCompte.PASSIF),
+            Triple("512", "Banques", TypeCompte.ACTIF),
+            Triple("517", "Mobile money (autres organismes financiers)", TypeCompte.ACTIF),
+            Triple("53", "Caisse", TypeCompte.ACTIF),
+            Triple("6037", "Variation des stocks de marchandises", TypeCompte.CHARGE),
+            Triple("6061", "Fournitures non stockables (eau, énergie)", TypeCompte.CHARGE),
+            Triple("6064", "Fournitures administratives", TypeCompte.CHARGE),
+            Triple("607", "Achats de marchandises", TypeCompte.CHARGE),
+            Triple("613", "Locations", TypeCompte.CHARGE),
+            Triple("615", "Entretien et réparations", TypeCompte.CHARGE),
+            Triple("624", "Transports de biens", TypeCompte.CHARGE),
+            Triple("626", "Frais postaux et de télécommunications", TypeCompte.CHARGE),
+            Triple("627", "Services bancaires et assimilés", TypeCompte.CHARGE),
+            Triple("628", "Charges externes diverses", TypeCompte.CHARGE),
+            Triple("635", "Autres impôts, taxes et versements assimilés", TypeCompte.CHARGE),
+            Triple("658", "Charges diverses de gestion courante", TypeCompte.CHARGE),
+            Triple("661", "Rémunérations du personnel", TypeCompte.CHARGE),
+            Triple("707", "Ventes de marchandises", TypeCompte.PRODUIT),
+            Triple("758", "Produits divers de gestion courante", TypeCompte.PRODUIT),
+        )
+
         private object DonneesInitiales : RoomDatabase.Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 val date = maintenant()
+                PLAN_COMPTABLE.forEach { (numero, libelle, type) ->
+                    db.execSQL(
+                        "INSERT INTO compte (id, numero, libelle, classe, type, de_base, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
+                        arrayOf<Any>(nouvelId(), numero, libelle, numero.first().digitToInt(), type.name, date),
+                    )
+                }
                 CATEGORIES_DEPENSES.forEach { (nom, compte) ->
                     db.execSQL(
                         "INSERT INTO categorie_depense (id, nom, compte_numero, actif, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)",

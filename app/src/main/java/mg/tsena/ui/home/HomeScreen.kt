@@ -122,7 +122,7 @@ private class ModuleAVenir(val nom: String, val sprint: String, val icone: @Comp
 
 /** Modules prévus dans les sprints suivants (Claude.md §6). */
 private val MODULES_A_VENIR = listOf(
-    ModuleAVenir("Comptabilité", "S6") { painterResource(R.drawable.ic_comptabilite) },
+    ModuleAVenir("États financiers et tableaux de bord", "S7") { painterResource(R.drawable.ic_comptabilite) },
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -275,6 +275,15 @@ fun HomeScreen(
                     }
                     EntreeMenu("Fournisseurs à payer", "Dettes, échéances et paiements", painterResource(R.drawable.ic_appro)) {
                         onOuvrir(Routes.FOURNISSEURS)
+                    }
+                }
+            }
+
+            if (utilisateur.peut(Permission.VOIR_COMPTABILITE)) {
+                Text("Comptabilité", style = MaterialTheme.typography.titleMedium)
+                Card(Modifier.fillMaxWidth()) {
+                    EntreeMenu("Comptabilité", "Journaux, plan comptable PCG 2005, exercices", painterResource(R.drawable.ic_comptabilite)) {
+                        onOuvrir(Routes.COMPTABILITE)
                     }
                 }
             }

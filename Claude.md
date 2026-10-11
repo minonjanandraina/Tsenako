@@ -114,9 +114,11 @@ exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jama
 ### 4.8 Comptabilité
 - **exercice** : date_debut, date_fin, statut (`OUVERT`, `CLOTURE`)
 - **compte** : numero, libelle, classe, type (`ACTIF`, `PASSIF`, `CHARGE`, `PRODUIT`, `CAPITAUX`)
-- **journal** : code (`VT` ventes, `AC` achats, `CA` caisse, `BQ` banque, `OD` opérations diverses), libelle
-- **ecriture** : journal_id, exercice_id, date, libelle, document_type, document_id, statut (`BROUILLON`, `VALIDEE`)
-- **ligne_ecriture** : ecriture_id, compte_id, debit, credit, tiers_type, tiers_id
+- **journal** : code (`VT` ventes, `AC` achats, `CA` caisse, `BQ` banque, `OD` opérations diverses), libelle —
+  liste fixe (enum `Journal`), pas de table
+- **ecriture** : numero (séquentiel sans trou), journal, exercice_id, date, libelle, document_type, document_id,
+  contrepassation_de — toujours validée (générée automatiquement)
+- **ligne_ecriture** : ecriture_id, compte_numero, debit, credit, tiers_type (`CLIENT`, `FOURNISSEUR`), tiers_id
 
 ### 4.9 Relations clés (résumé)
 ```
@@ -276,7 +278,16 @@ Schémas d'écritures types (PCG 2005) :
 | Apport du propriétaire | 53 Caisse | 108 Compte de l'exploitant |
 | Retrait du propriétaire | 108 Compte de l'exploitant | 53 Caisse |
 
-> Numéros de comptes à faire valider par un comptable malgache avant le sprint S6.
+> Numéros de comptes à faire valider par un comptable malgache. Comptes utilisés par l'app : 517 mobile money,
+> 512 banque et carte, 101 capital (stock initial apporté), 120 / 129 résultat.
+
+- RG-K9 : Écritures passées dans la transaction du document (refus de l'écriture = refus du document).
+  Annulations de vente et de dépense : contre-passation. Pertes, ventes et retours ne mouvementent pas le stock
+  comptable : le compte 37 est ajusté (contrepartie 6037) à la valeur CMUP de tous les dépôts à chaque inventaire
+  validé, à la clôture d'exercice, ou à la demande (« Mettre à jour la valeur du stock »).
+- RG-K10 : Exercices créés automatiquement selon le mois de début du commerce. Clôture (propriétaire, après la date
+  de fin) : variation de stock puis solde des classes 6 et 7 vers 120 / 129. Les comptes de bilan sont cumulés
+  depuis l'origine (pas d'écritures d'à-nouveaux).
 
 ### 5.10 Transverses
 - RG-X1 : Toutes les données sont dans une **base locale** (Room) ; l'app fonctionne entièrement sans internet.
@@ -385,3 +396,8 @@ app/src/main/java/mg/tsena/
   annulation, catégories (compte de charge) ; fiche fournisseur (solde, échéances, retards, paiements, acomptes) ;
   retours au fournisseur ; fiche client (crédit dû, achats, remboursements). Mode `BANQUE` (hors caisse).
   Reporté : écritures comptables (S6), annulation d'un paiement fournisseur ou d'un remboursement client.
+- **S6** (code écrit, non compilé localement) : plan comptable PCG 2005 pré-chargé et sous-comptes, exercices
+  automatiques et clôture, écritures générées par tous les documents (ventes, retours, annulations, réceptions,
+  retours fournisseurs, paiements, dépenses, remboursements, apports / retraits, écarts de caisse, stock initial,
+  inventaires), journaux par mois, grand livre par compte. Permission `GERER_COMPTABILITE` (propriétaire).
+  Reporté : balance, bilan, compte de résultat, flux de trésorerie (S7).

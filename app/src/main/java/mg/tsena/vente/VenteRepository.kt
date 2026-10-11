@@ -7,6 +7,10 @@ import mg.tsena.auth.ActionAudit
 import mg.tsena.auth.AuditLogger
 import mg.tsena.auth.AuthRepository
 import mg.tsena.auth.SessionManager
+import mg.tsena.compta.Comptable
+import mg.tsena.compta.PieceComptable
+import mg.tsena.compta.ReglesComptables
+import mg.tsena.data.db.entity.Journal
 import mg.tsena.data.db.TsenaDatabase
 import mg.tsena.data.db.entity.CaisseEntity
 import mg.tsena.data.db.entity.ClientAvecCredit
@@ -66,6 +70,7 @@ class VenteRepository(
     private val audit: AuditLogger,
     private val auth: AuthRepository,
     private val stock: StockRepository,
+    private val comptable: Comptable,
 ) {
     private val caisseDao = db.caisseDao()
     private val clientDao = db.clientDao()
@@ -116,8 +121,15 @@ class VenteRepository(
             if (type == TypeOperationCaisse.RETRAIT && montant > soldeEspeces(s)) {
                 throw RegleMetierException("Il n'y a que ${Montant.formater(soldeEspeces(s))} en espèces dans la caisse.")
             }
-            caisseDao.insererOperation(
-                OperationCaisseEntity(sessionId = s.id, type = type, mode = ModePaiement.ESPECES, montant = montant, libelle = motif, createdBy = auteur.id)
+            val operation = OperationCaisseEntity(
+                sessionId = s.id, type = type, mode = ModePaiement.ESPECES, montant = montant, libelle = motif, createdBy = auteur.id,
+            )
+            caisseDao.insererOperation(operation)
+            // Apport : 53 / 108 ; retrait : 108 / 53
+            comptable.passer(
+                Journal.CA, "${type.libelle} : $motif",
+                if (type == TypeOperationCaisse.APPORT) ReglesComptables.apport(montant) else ReglesComptables.retrait(montant),
+                PieceComptable(DOCUMENT_OPERATION_CAISSE, operation.id),
             )
             audit.enregistrer(
                 if (type == TypeOperationCaisse.APPORT) ActionAudit.APPORT_CAISSE else ActionAudit.RETRAIT_CAISSE,
@@ -126,7 +138,7 @@ class VenteRepository(
         }
     }
 
-    /** RG-C3 : clôture avec les espèces comptées ; l'écart est enregistré (comptabilisé au sprint S6). Renvoie l'écart. */
+    /** RG-C3 : clôture avec les espèces comptées ; l'écart est enregistré et comptabilisé (658 / 758). Renvoie l'écart. */
     suspend fun cloturerCaisse(sessionId: String, especesComptees: Long): Long {
         val auteur = session.exiger(Permission.GERER_CAISSE)
         if (especesComptees < 0) throw RegleMetierException("Le montant compté ne peut pas être négatif.")
@@ -145,6 +157,10 @@ class VenteRepository(
                     ecart = ecart,
                     updatedAt = date,
                 )
+            )
+            comptable.passer(
+                Journal.CA, "Écart de caisse à la clôture", ReglesComptables.ecartCaisse(ecart),
+                PieceComptable(DOCUMENT_SESSION_CAISSE, s.id), date,
             )
             audit.enregistrer(
                 ActionAudit.CLOTURE_CAISSE,
@@ -246,7 +262,7 @@ class VenteRepository(
      * Valide une vente : prix recalculés (RG-V1), session ouverte (RG-V2), coût figé (RG-V3), sorties de stock,
      * encaissements par mode (RG-C5). Lève [AutorisationRequiseException] si la remise dépasse le seuil
      * sans code PIN valide d'un gérant (RG-V5). Renvoie l'id de la vente.
-     * L'écriture comptable (53/51x/411 – 707) viendra au sprint S6.
+     * Écriture 53 / 517 / 512 / 411 – 707 au journal des ventes.
      */
     suspend fun validerVente(saisie: SaisieVente): String {
         val vendeur = session.exiger(Permission.VENDRE)
@@ -352,6 +368,11 @@ class VenteRepository(
                     )
                 )
             }
+            comptable.passer(
+                Journal.VT, "Vente ${vente.numero}" + (client?.let { " : ${it.nom}" } ?: ""),
+                ReglesComptables.vente(totalNet, paiements.map { it.mode to it.montant }, client?.id),
+                PieceComptable(DOCUMENT_VENTE, vente.id), vente.date,
+            )
             audit.enregistrer(ActionAudit.VENTE, "${vente.numero} : ${Montant.formater(totalNet)} (${pv.nom})")
             if (autorisePar != null) {
                 audit.enregistrer(ActionAudit.REMISE_AUTORISEE, "${vente.numero} : remise ${Montant.formater(saisie.remise)}", utilisateurId = autorisePar)
@@ -399,6 +420,7 @@ class VenteRepository(
             venteDao.modifier(
                 vente.copy(statut = StatutVente.ANNULEE, dateAnnulation = date, annuleePar = auteur.id, motifAnnulation = motifPropre, updatedAt = date)
             )
+            comptable.contrePasser(PieceComptable(DOCUMENT_VENTE, vente.id), "Annulation vente ${vente.numero}")
             audit.enregistrer(ActionAudit.ANNULATION_VENTE, "${vente.numero} : $motifPropre")
         }
     }
@@ -481,6 +503,10 @@ class VenteRepository(
                     )
                 )
             }
+            comptable.passer(
+                Journal.VT, "Retour ${retour.numero} (${vente.numero})",
+                ReglesComptables.retourVente(montant, mode, vente.clientId), PieceComptable(DOCUMENT_RETOUR, retour.id),
+            )
             audit.enregistrer(ActionAudit.RETOUR_VENTE, "${retour.numero} (${vente.numero}) : ${Montant.formater(montant)}, ${mode.libelle}")
             montant
         }
@@ -516,6 +542,8 @@ class VenteRepository(
     companion object {
         const val DOCUMENT_VENTE = "VENTE"
         const val DOCUMENT_RETOUR = "RETOUR_VENTE"
+        const val DOCUMENT_SESSION_CAISSE = "SESSION_CAISSE"
+        const val DOCUMENT_OPERATION_CAISSE = "OPERATION_CAISSE"
         private const val PREFIXE_VENTE = "V"
         private const val PREFIXE_RETOUR = "RV"
         private const val LIMITE_HISTORIQUE = 200
