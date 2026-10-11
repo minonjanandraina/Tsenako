@@ -5,8 +5,8 @@ import android.content.Intent
 import android.database.SQLException
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -45,6 +45,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import java.io.IOException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -58,14 +59,14 @@ import mg.tsena.auth.AuthRepository
 import mg.tsena.auth.UtilisateurConnecte
 import mg.tsena.backup.BackupManager
 import mg.tsena.container
+import mg.tsena.credit.CreditRepository
 import mg.tsena.data.db.entity.CommerceEntity
 import mg.tsena.domain.Permission
-import mg.tsena.erreurs.JournalErreurs
 import mg.tsena.domain.formaterDateHeure
 import mg.tsena.domain.maintenant
+import mg.tsena.erreurs.JournalErreurs
 import mg.tsena.stock.StockRepository
 import mg.tsena.ui.Routes
-import java.io.IOException
 
 class HomeViewModel(
     private val auth: AuthRepository,
@@ -73,7 +74,11 @@ class HomeViewModel(
     stock: StockRepository,
     appro: ApproRepository,
     private val erreurs: JournalErreurs,
+    credits: CreditRepository,
 ) : ViewModel() {
+    /** Clients dont un crédit dépasse le délai (badge de la grande icône Crédits) */
+    val nbCreditsEnRetard: StateFlow<Int> = credits.observerCredits().map { liste -> liste.count { it.enRetard } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     /** Rapport du dernier plantage, à envoyer pendant les tests terrain */
     val rapportErreur: StateFlow<String?> = erreurs.rapport
 
@@ -130,6 +135,7 @@ class HomeViewModel(
                     container.stockRepository,
                     container.approRepository,
                     container.journalErreurs,
+                    container.creditRepository,
                 )
             }
         }
@@ -203,6 +209,7 @@ fun HomeScreen(
             }
             val nbAlertes by vm.nbAlertes.collectAsStateWithLifecycle()
             val nbEnTransit by vm.nbTransfertsEnTransit.collectAsStateWithLifecycle()
+            val nbCreditsEnRetard by vm.nbCreditsEnRetard.collectAsStateWithLifecycle()
             // Grandes icônes : modules accessibles, puis la gestion des utilisateurs
             val tuiles = Module.entries
                 .filter { entreesModule(it, utilisateur, nbAlertes, nbEnTransit).isNotEmpty() }
@@ -212,6 +219,7 @@ fun HomeScreen(
                         alerte = when {
                             module == Module.STOCKS && nbAlertes > 0 -> "$nbAlertes alerte(s)"
                             module == Module.APPRO && nbEnTransit > 0 -> "$nbEnTransit en transit"
+                            module == Module.CREDITS && nbCreditsEnRetard > 0 -> "$nbCreditsEnRetard en retard"
                             else -> null
                         },
                         couleur = module.couleur,

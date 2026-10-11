@@ -61,6 +61,7 @@ import mg.tsena.domain.RegleMetierException
 import mg.tsena.domain.formaterDateHeure
 import mg.tsena.ui.common.ChampTexte
 import mg.tsena.ui.common.Selecteur
+import mg.tsena.finance.FinanceRepository
 import mg.tsena.vente.CalculsVente
 import mg.tsena.vente.VenteRepository
 
@@ -259,6 +260,14 @@ fun CaisseScreen(
                                 Ligne("Ouverte par", "${s.ouvertParNom}, ${formaterDateHeure(s.session.ouverture)}")
                                 Ligne("Fond de caisse", Montant.formater(s.session.fondInitial))
                                 Ligne("Ventes", "${resume.nb} · ${Montant.formater(resume.total)}")
+                                if (resume.credit > 0) {
+                                    Ligne("dont au comptant", Montant.formater(resume.total - resume.credit))
+                                    Ligne("dont à crédit (à encaisser)", Montant.formater(resume.credit))
+                                }
+                                val remboursements = operations
+                                    .filter { it.documentType == FinanceRepository.DOCUMENT_ENCAISSEMENT }
+                                    .sumOf { it.montant }
+                                if (remboursements > 0) Ligne("Remboursements de crédits reçus", Montant.formater(remboursements))
                                 HorizontalDivider()
                                 Ligne("Espèces en caisse", Montant.formater(t.soldeEspeces), important = true)
                                 t.parMode.forEach { (mode, montant) -> Ligne(mode.libelle, Montant.formater(montant)) }

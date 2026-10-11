@@ -10,6 +10,9 @@ import mg.tsena.compta.CompteResultat
 import mg.tsena.compta.EtatsFinanciers
 import mg.tsena.compta.FluxTresorerie
 import mg.tsena.compta.LigneBalance
+import mg.tsena.credit.Anciennete
+import mg.tsena.credit.CreditRepository
+import mg.tsena.credit.Credits
 import mg.tsena.data.db.TsenaDatabase
 import mg.tsena.data.db.entity.ExerciceEntity
 import mg.tsena.domain.Permission
@@ -28,6 +31,19 @@ data class EtatsExercice(
     val flux: FluxTresorerie,
 )
 
+/** Données du tableau de performance d'un mois. */
+data class DonneesPerformance(
+    val mois: YearMonth,
+    val ventes: RapportVentes,
+    /** Chiffre d'affaires de chaque jour du mois (jours sans vente à 0) */
+    val parJour: List<Pair<LocalDate, Long>>,
+    /** Comptant / crédit des six derniers mois, le mois choisi en dernier */
+    val sixMois: List<Pair<YearMonth, PartsVentes>>,
+    val impayesParAnciennete: Map<Anciennete, Long>,
+    val creances: Long,
+    val clientsEnRetard: Int,
+)
+
 /** Indicateurs de l'accueil du tableau de bord. */
 data class TableauDeBord(
     val jour: RapportVentes,
@@ -40,7 +56,11 @@ data class TableauDeBord(
 )
 
 /** Tableaux de bord, rapports de ventes, état des stocks et états financiers (S7). */
-class RapportRepository(private val db: TsenaDatabase, private val session: SessionManager) {
+class RapportRepository(
+    private val db: TsenaDatabase,
+    private val session: SessionManager,
+    private val credits: CreditRepository,
+) {
     fun observerVentes(mois: YearMonth): Flow<RapportVentes> {
         val (debut, fin) = Echeances.bornesMois(mois)
         return observerVentesPeriode(debut, fin)
@@ -50,6 +70,28 @@ class RapportRepository(private val db: TsenaDatabase, private val session: Sess
         db.venteDao().observerLignesRapport(debut, fin).map { CalculRapports.ventes(it) }
 
     fun observerEtatStocks(): Flow<List<EtatStockLigne>> = db.stockDao().observerEtat()
+
+    fun observerPerformance(mois: YearMonth): Flow<DonneesPerformance> {
+        val zone = ZoneId.systemDefault()
+        val premierMois = mois.minusMonths(5)
+        val debut = premierMois.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val (debutMois, fin) = Echeances.bornesMois(mois, zone)
+        return combine(db.venteDao().observerLignesRapport(debut, fin), credits.observerCredits()) { lignes, clients ->
+            val lignesMois = lignes.filter { it.date >= debutMois }
+            val parJour = Performance.caPar(lignesMois) { Echeances.jourDe(it, zone) }
+            val parMois = Performance.partsPar(lignes) { Echeances.moisDe(it, zone) }
+            val etats = clients.flatMap { it.ventes }
+            DonneesPerformance(
+                mois = mois,
+                ventes = CalculRapports.ventes(lignesMois),
+                parJour = (1..mois.lengthOfMonth()).map { j -> mois.atDay(j).let { it to (parJour[it] ?: 0L) } },
+                sixMois = (0L..5L).map { premierMois.plusMonths(it) }.map { m -> m to (parMois[m] ?: PartsVentes(0, 0)) },
+                impayesParAnciennete = Credits.parAnciennete(etats),
+                creances = clients.sumOf { maxOf(0, it.du) },
+                clientsEnRetard = clients.count { it.enRetard },
+            )
+        }
+    }
 
     fun observerTableauDeBord(): Flow<TableauDeBord> {
         val zone = ZoneId.systemDefault()

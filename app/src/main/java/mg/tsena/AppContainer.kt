@@ -13,6 +13,7 @@ import mg.tsena.catalogue.CatalogueRepository
 import mg.tsena.catalogue.PhotoManager
 import mg.tsena.compta.ComptaRepository
 import mg.tsena.compta.Comptable
+import mg.tsena.credit.CreditRepository
 import mg.tsena.data.db.TsenaDatabase
 import mg.tsena.erreurs.JournalErreurs
 import mg.tsena.finance.FinanceRepository
@@ -38,7 +39,8 @@ class AppContainer(context: Context) {
     val venteRepository = VenteRepository(database, session, audit, authRepository, stockRepository, comptable)
     val financeRepository = FinanceRepository(database, session, audit, comptable)
     val comptaRepository = ComptaRepository(database, session, audit, comptable)
-    val rapportRepository = RapportRepository(database, session)
+    val creditRepository = CreditRepository(database)
+    val rapportRepository = RapportRepository(database, session, creditRepository)
 }
 
 class TsenaApp : Application() {

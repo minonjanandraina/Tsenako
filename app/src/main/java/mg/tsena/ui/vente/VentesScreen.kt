@@ -49,6 +49,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import java.io.File
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -56,11 +57,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import mg.tsena.catalogue.PhotoManager
 import mg.tsena.container
+import mg.tsena.credit.CreditRepository
+import mg.tsena.credit.EtatCreditVente
 import mg.tsena.data.db.entity.LigneVenteAvecProduit
 import mg.tsena.data.db.entity.ModePaiement
 import mg.tsena.data.db.entity.PaiementVenteEntity
@@ -76,7 +80,6 @@ import mg.tsena.domain.formaterDateHeure
 import mg.tsena.ui.catalogue.PhotoProduit
 import mg.tsena.ui.common.ChampTexte
 import mg.tsena.vente.VenteRepository
-import java.io.File
 
 // --- Historique des ventes ---
 
@@ -164,7 +167,12 @@ class VenteDetailViewModel(
     private val venteId: String,
     private val ventes: VenteRepository,
     private val photos: PhotoManager,
+    credits: CreditRepository,
 ) : ViewModel() {
+    /** Suivi du crédit de cette vente (null si elle n'est pas à crédit) */
+    val credit: StateFlow<EtatCreditVente?> = credits.observerCredits()
+        .map { liste -> liste.flatMap { it.ventes }.firstOrNull { it.venteId == venteId } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val vente: StateFlow<VenteAvecDetails?> = ventes.observerVente(venteId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val lignes: StateFlow<List<LigneVenteAvecProduit>> = ventes.observerLignesVente(venteId)
@@ -257,7 +265,7 @@ class VenteDetailViewModel(
 
     companion object {
         fun factory(venteId: String) = viewModelFactory {
-            initializer { VenteDetailViewModel(venteId, container.venteRepository, container.photoManager) }
+            initializer { VenteDetailViewModel(venteId, container.venteRepository, container.photoManager, container.creditRepository) }
         }
     }
 }
@@ -275,6 +283,7 @@ fun VenteDetailScreen(
     val lignes by vm.lignes.collectAsStateWithLifecycle()
     val paiements by vm.paiements.collectAsStateWithLifecycle()
     val retours by vm.retours.collectAsStateWithLifecycle()
+    val credit by vm.credit.collectAsStateWithLifecycle()
     val context = LocalContext.current
     LaunchedEffect(Unit) {
         vm.partage.collect { intent ->
@@ -348,6 +357,15 @@ fun VenteDetailScreen(
                     }
                     Info("Net payé", Montant.formater(v.vente.totalNet))
                     paiements.forEach { p -> Info(p.mode.libelle, Montant.formater(p.montant) + (p.reference?.let { " ($it)" } ?: "")) }
+                    credit?.takeIf { validee }?.let { e ->
+                        if (e.retours > 0) Info("Retours sur le crédit", "−" + Montant.formater(e.retours))
+                        Info("Remboursé", Montant.formater(e.rembourse))
+                        Text(
+                            if (e.reste > 0) "Reste à payer : ${Montant.formater(e.reste)} (depuis ${e.ageJours} jour(s))" else "Crédit soldé",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (e.reste > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             }
             if (retours.isNotEmpty()) {

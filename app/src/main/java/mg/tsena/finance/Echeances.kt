@@ -20,6 +20,9 @@ object Echeances {
         mois.atDay(1).atStartOfDay(fuseau).toInstant().toEpochMilli() to
             mois.plusMonths(1).atDay(1).atStartOfDay(fuseau).toInstant().toEpochMilli()
 
+    fun jourDe(millis: Long, fuseau: ZoneId = ZoneId.systemDefault()): java.time.LocalDate =
+        Instant.ofEpochMilli(millis).atZone(fuseau).toLocalDate()
+
     fun moisDe(millis: Long, fuseau: ZoneId = ZoneId.systemDefault()): YearMonth =
         YearMonth.from(Instant.ofEpochMilli(millis).atZone(fuseau).toLocalDate())
 }

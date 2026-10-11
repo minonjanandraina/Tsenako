@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -45,6 +47,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import mg.tsena.container
+import mg.tsena.credit.CreditClient
+import mg.tsena.credit.CreditRepository
 import mg.tsena.data.db.entity.ClientAvecCredit
 import mg.tsena.data.db.entity.EncaissementClientEntity
 import mg.tsena.data.db.entity.ModePaiement
@@ -58,6 +62,7 @@ import mg.tsena.domain.Telephone
 import mg.tsena.domain.formaterDateHeure
 import mg.tsena.finance.FinanceRepository
 import mg.tsena.ui.common.ChampTexte
+import mg.tsena.ui.credit.relancer
 import mg.tsena.ui.finance.ChoixReglement
 import mg.tsena.vente.VenteRepository
 
@@ -65,7 +70,11 @@ class ClientViewModel(
     private val clientId: String,
     private val ventes: VenteRepository,
     private val finance: FinanceRepository,
+    credits: CreditRepository,
 ) : ViewModel() {
+    /** Reste dû par vente à crédit (remboursements imputés de la plus ancienne à la plus récente) */
+    val credit: StateFlow<CreditClient?> = credits.observerCreditClient(clientId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val client: StateFlow<ClientAvecCredit?> = ventes.observerClients()
         .map { liste -> liste.firstOrNull { it.client.id == clientId } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -121,7 +130,7 @@ class ClientViewModel(
 
     companion object {
         fun factory(clientId: String) = viewModelFactory {
-            initializer { ClientViewModel(clientId, container.venteRepository, container.financeRepository) }
+            initializer { ClientViewModel(clientId, container.venteRepository, container.financeRepository, container.creditRepository) }
         }
     }
 }
@@ -130,6 +139,7 @@ class ClientViewModel(
 @Composable
 fun ClientScreen(
     clientId: String,
+    nomCommerce: String,
     peutEncaisser: Boolean,
     onRetour: () -> Unit,
     onVente: (venteId: String) -> Unit,
@@ -139,6 +149,8 @@ fun ClientScreen(
     val achats by vm.achats.collectAsStateWithLifecycle()
     val encaissements by vm.encaissements.collectAsStateWithLifecycle()
     val caisses by vm.caisses.collectAsStateWithLifecycle()
+    val credit by vm.credit.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val c = client
 
     Scaffold(
@@ -172,6 +184,17 @@ fun ClientScreen(
                             style = MaterialTheme.typography.titleMedium,
                             color = if (c.creditDu > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                         )
+                        credit?.let { cc ->
+                            cc.plusAncienJours?.let { jours ->
+                                Text(
+                                    "${cc.impayees.size} vente(s) impayée(s), la plus ancienne depuis $jours jour(s)",
+                                    color = if (cc.enRetard) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (cc.du > 0) {
+                                OutlinedButton(onClick = { relancer(context, nomCommerce, cc) }) { Text("Relancer par WhatsApp") }
+                            }
+                        }
                         vm.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
                     }
                 }
@@ -189,15 +212,25 @@ fun ClientScreen(
             item { Titre("Achats") }
             if (achats.isEmpty()) item { Text("Aucun achat.", Modifier.padding(horizontal = 16.dp)) }
             items(achats, key = { it.vente.id }) { v ->
-                val credit = v.vente.typePaiement != TypePaiement.COMPTANT
+                val aCredit = v.vente.typePaiement != TypePaiement.COMPTANT
+                val etat = credit?.ventes?.firstOrNull { it.venteId == v.vente.id }
                 ListItem(
                     overlineContent = { Text("${v.vente.numero} · ${formaterDateHeure(v.vente.date)}") },
                     headlineContent = { Text(Montant.formater(v.vente.totalNet)) },
+                    trailingContent = {
+                        if (etat != null && v.vente.statut == StatutVente.VALIDEE) {
+                            Text(
+                                if (etat.reste > 0) "Reste ${Montant.formater(etat.reste)}" else "Soldée",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = if (etat.reste > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    },
                     supportingContent = {
                         Text(
                             listOfNotNull(
                                 v.vente.typeVente.libelle,
-                                if (credit) "à crédit" else "comptant",
+                                if (aCredit) "à crédit" else "comptant",
                                 if (v.vente.statut == StatutVente.ANNULEE) "annulée" else null,
                             ).joinToString(" · ")
                         )

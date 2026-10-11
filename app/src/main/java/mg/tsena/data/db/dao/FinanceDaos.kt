@@ -16,6 +16,7 @@ import mg.tsena.data.db.entity.PaiementFournisseurEntity
 import mg.tsena.data.db.entity.ReceptionAPayer
 import mg.tsena.data.db.entity.RetourFournisseurEntity
 import mg.tsena.data.db.entity.TotalCategorie
+import mg.tsena.credit.TotalClient
 
 @Dao
 interface CategorieDepenseDao {
@@ -179,6 +180,9 @@ interface EncaissementClientDao {
         """
     )
     suspend fun creditDu(clientId: String): Long
+
+    @Query("SELECT client_id AS clientId, SUM(montant) AS total FROM encaissement_client GROUP BY client_id")
+    fun observerTotauxParClient(): Flow<List<TotalClient>>
 
     @Query("SELECT COUNT(*) FROM encaissement_client")
     suspend fun compter(): Int

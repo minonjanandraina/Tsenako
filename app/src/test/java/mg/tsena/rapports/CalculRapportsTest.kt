@@ -15,7 +15,9 @@ class CalculRapportsTest {
         brut: Long,
         net: Long,
         pv: String = "Boutique",
-    ) = LigneVenteRapport(vente, pv, produit, produit, "pce", quantite, retournee, montant, cout, brut, net)
+        date: Long = 0,
+        credit: Long = 0,
+    ) = LigneVenteRapport(vente, date, pv, produit, produit, "pce", quantite, retournee, montant, cout, brut, net, credit)
 
     @Test
     fun `chiffre d affaires et marge`() {
@@ -47,5 +49,24 @@ class CalculRapportsTest {
         val r = CalculRapports.ventes(emptyList())
         assertEquals(0L, r.chiffreAffaires)
         assertNull(r.tauxMarge)
+    }
+}
+
+class PerformanceTest {
+    private fun ligne(vente: String, jour: Long, montant: Long, net: Long, credit: Long) =
+        LigneVenteRapport(vente, jour, "Boutique", "p", "p", "pce", 1_000, 0, montant, 0, montant, net, credit)
+
+    @Test
+    fun `chiffre d affaires par jour`() {
+        val ca = Performance.caPar(listOf(ligne("v1", 1, 1_000, 1_000, 0), ligne("v2", 1, 2_000, 2_000, 0), ligne("v3", 2, 500, 500, 0))) { it }
+        assertEquals(3_000L, ca[1L])
+        assertEquals(500L, ca[2L])
+    }
+
+    @Test
+    fun `part a credit au prorata`() {
+        val parts = Performance.partsPar(listOf(ligne("v1", 1, 10_000, 10_000, 4_000), ligne("v2", 1, 5_000, 5_000, 0))) { 0 }
+        assertEquals(4_000L, parts.getValue(0).credit)
+        assertEquals(11_000L, parts.getValue(0).comptant)
     }
 }

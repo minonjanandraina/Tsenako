@@ -49,6 +49,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import java.io.File
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -59,6 +60,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import mg.tsena.catalogue.PhotoManager
 import mg.tsena.container
+import mg.tsena.credit.CreditClient
+import mg.tsena.credit.CreditRepository
 import mg.tsena.data.db.entity.ClientAvecCredit
 import mg.tsena.data.db.entity.ModePaiement
 import mg.tsena.data.db.entity.PointVenteAvecDepot
@@ -78,7 +81,6 @@ import mg.tsena.vente.LigneVenteSaisie
 import mg.tsena.vente.PaiementSaisi
 import mg.tsena.vente.SaisieVente
 import mg.tsena.vente.VenteRepository
-import java.io.File
 
 data class LignePanier(val produit: ProduitVente, val quantiteMilli: Long, val prixUnitaire: Long) {
     val montant: Long get() = Valorisation.valeur(quantiteMilli, prixUnitaire)
@@ -98,7 +100,12 @@ class VenteViewModel(
     private val pointVenteId: String,
     private val ventes: VenteRepository,
     private val photos: PhotoManager,
+    creditRepository: CreditRepository,
 ) : ViewModel() {
+    /** Suivi des crédits par client, pour afficher l'impayé du client choisi */
+    val credits: StateFlow<Map<String, CreditClient>> = creditRepository.observerCredits()
+        .map { liste -> liste.associateBy { it.client.client.id } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
     val pointVente: StateFlow<PointVenteAvecDepot?> = ventes.observerPointsVente()
         .map { liste -> liste.firstOrNull { it.pointVente.id == pointVenteId } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -281,7 +288,7 @@ class VenteViewModel(
 
     companion object {
         fun factory(pointVenteId: String) = viewModelFactory {
-            initializer { VenteViewModel(pointVenteId, container.venteRepository, container.photoManager) }
+            initializer { VenteViewModel(pointVenteId, container.venteRepository, container.photoManager, container.creditRepository) }
         }
     }
 }
@@ -298,6 +305,7 @@ fun VenteScreen(
     val session by vm.session.collectAsStateWithLifecycle()
     val catalogue by vm.catalogue.collectAsStateWithLifecycle()
     val clients by vm.clients.collectAsStateWithLifecycle()
+    val credits by vm.credits.collectAsStateWithLifecycle()
     var ongletPanier by rememberSaveable { mutableStateOf(false) }
 
     val filtres = remember(catalogue, vm.recherche) {
@@ -351,6 +359,25 @@ fun VenteScreen(
                 OutlinedButton(onClick = { vm.choixClientOuvert = true }, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Filled.Person, contentDescription = null)
                     Text(" " + (vm.client?.client?.nom ?: if (vm.type == TypeVente.GROS) "Client requis" else "Client"), maxLines = 1)
+                }
+            }
+            // Suivi client : impayé du client choisi (ventes à crédit non soldées)
+            vm.client?.let { choisi ->
+                val cc = credits[choisi.client.id]
+                if (cc != null && cc.du > 0) {
+                    Text(
+                        "Impayé de ${choisi.client.nom} : ${Montant.formater(cc.du)}" +
+                            (cc.plusAncienJours?.let { " · plus ancien : $it j" } ?: ""),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (cc.enRetard) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                } else {
+                    Text(
+                        "${choisi.client.nom} : aucun impayé",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
                 }
             }
             vm.message?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }

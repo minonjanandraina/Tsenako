@@ -52,6 +52,7 @@ enum class Module(val titre: String, val couleur: Color) {
     CATALOGUE("Catalogue", Color(0xFF3949AB)),
     STOCKS("Stocks", Color(0xFF00796B)),
     VENTES("Ventes", Color(0xFFE65100)),
+    CREDITS("Crédits clients", Color(0xFFAD1457)),
     APPRO("Approvisionnement", Color(0xFF6D4C41)),
     DEPENSES("Dépenses", Color(0xFFC62828)),
     COMPTABILITE("Comptabilité", Color(0xFF6A1B9A)),
@@ -74,6 +75,7 @@ fun iconeModule(module: Module): Painter = when (module) {
     Module.CATALOGUE -> painterResource(R.drawable.ic_produits)
     Module.STOCKS -> painterResource(R.drawable.ic_stock)
     Module.VENTES -> rememberVectorPainter(Icons.Filled.ShoppingCart)
+    Module.CREDITS -> painterResource(R.drawable.ic_credit)
     Module.APPRO -> painterResource(R.drawable.ic_appro)
     Module.DEPENSES -> painterResource(R.drawable.ic_depenses)
     Module.COMPTABILITE -> painterResource(R.drawable.ic_comptabilite)
@@ -117,6 +119,17 @@ fun entreesModule(module: Module, u: UtilisateurConnecte, nbAlertes: Int, nbEnTr
                 Permission.GERER_PRODUITS,
                 EntreeModule("Prix par point de vente", "Prix particuliers d'une boutique", Routes.PRIX_POINTS_VENTE) { painterResource(R.drawable.ic_prix) },
             )
+        Module.CREDITS ->
+            if (u.peut(Permission.VENDRE) || u.peut(Permission.GERER_CAISSE)) {
+                listOf(
+                    EntreeModule("Suivi des crédits", "Impayés par client et par vente, retards, relances", Routes.CREDITS) {
+                        painterResource(R.drawable.ic_credit)
+                    },
+                    EntreeModule("Clients", "Fiches, achats et remboursements", Routes.CLIENTS) { rememberVectorPainter(Icons.Filled.Person) },
+                )
+            } else {
+                emptyList()
+            }
         Module.APPRO -> si(
             Permission.GERER_APPRO,
             EntreeModule("Commandes", "Commander aux fournisseurs", Routes.COMMANDES) { painterResource(R.drawable.ic_commande) },
@@ -137,6 +150,9 @@ fun entreesModule(module: Module, u: UtilisateurConnecte, nbAlertes: Int, nbEnTr
         )
         Module.COMPTABILITE -> si(
             Permission.VOIR_COMPTABILITE,
+            EntreeModule("Performance", "Graphiques : ventes par jour, comptant et crédit, meilleurs produits", Routes.PERFORMANCE) {
+                painterResource(R.drawable.ic_performance)
+            },
             EntreeModule("Tableau de bord", "Ventes, marges, stock, dettes et créances", Routes.TABLEAU_DE_BORD) { painterResource(R.drawable.ic_stock) },
             EntreeModule("États financiers", "Bilan, compte de résultat, flux de trésorerie", Routes.ETATS_FINANCIERS) {
                 painterResource(R.drawable.ic_comptabilite)

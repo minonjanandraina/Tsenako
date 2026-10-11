@@ -22,6 +22,7 @@ import mg.tsena.data.db.entity.SessionAvecDetails
 import mg.tsena.data.db.entity.SessionCaisseEntity
 import mg.tsena.data.db.entity.VenteAvecDetails
 import mg.tsena.data.db.entity.VenteEntity
+import mg.tsena.credit.CreditVente
 import mg.tsena.rapports.LigneVenteRapport
 
 @Dao
@@ -242,10 +243,11 @@ interface VenteDao {
     /** Lignes des ventes validées d'une période, pour les rapports de ventes et de marge. */
     @Query(
         """
-        SELECT v.id AS venteId, pv.nom AS pointVenteNom, p.id AS produitId, p.nom AS produitNom,
+        SELECT v.id AS venteId, v.date, pv.nom AS pointVenteNom, p.id AS produitId, p.nom AS produitNom,
                u.symbole AS uniteSymbole, l.quantite_milli AS quantiteMilli,
                l.quantite_retournee_milli AS quantiteRetourneeMilli, l.montant, l.cout_unitaire AS coutUnitaire,
-               v.total_brut AS totalBrut, v.total_net AS totalNet
+               v.total_brut AS totalBrut, v.total_net AS totalNet,
+               COALESCE((SELECT SUM(p.montant) FROM paiement_vente p WHERE p.vente_id = v.id AND p.mode = 'CREDIT'), 0) AS creditVente
         FROM ligne_vente l
         JOIN vente v ON v.id = l.vente_id
         JOIN point_vente pv ON pv.id = v.point_vente_id
@@ -256,13 +258,33 @@ interface VenteDao {
     )
     fun observerLignesRapport(debut: Long, fin: Long): Flow<List<LigneVenteRapport>>
 
+    /** Ventes validées payées (en partie) à crédit, avec les retours déjà déduits de ce crédit. */
+    @Query(
+        """
+        SELECT v.id AS venteId, v.numero, v.client_id AS clientId, v.date, SUM(p.montant) AS montant,
+               COALESCE((SELECT SUM(r.montant) FROM retour_vente r WHERE r.vente_id = v.id AND r.mode_remboursement = 'CREDIT'), 0) AS retoursCredit
+        FROM vente v
+        JOIN paiement_vente p ON p.vente_id = v.id AND p.mode = 'CREDIT'
+        WHERE v.statut = 'VALIDEE' AND v.client_id IS NOT NULL
+        GROUP BY v.id
+        """
+    )
+    fun observerVentesCredit(): Flow<List<CreditVente>>
+
     @Query("SELECT * FROM paiement_vente WHERE vente_id = :venteId")
     fun observerPaiements(venteId: String): Flow<List<PaiementVenteEntity>>
 
     @Query("SELECT * FROM retour_vente WHERE vente_id = :venteId ORDER BY date DESC")
     fun observerRetours(venteId: String): Flow<List<RetourVenteEntity>>
 
-    @Query("SELECT COUNT(*) AS nb, COALESCE(SUM(total_net), 0) AS total FROM vente WHERE session_caisse_id = :sessionId AND statut = 'VALIDEE'")
+    @Query(
+        """
+        SELECT COUNT(*) AS nb, COALESCE(SUM(total_net), 0) AS total,
+               COALESCE((SELECT SUM(p.montant) FROM paiement_vente p JOIN vente v2 ON v2.id = p.vente_id
+                         WHERE v2.session_caisse_id = :sessionId AND v2.statut = 'VALIDEE' AND p.mode = 'CREDIT'), 0) AS credit
+        FROM vente WHERE session_caisse_id = :sessionId AND statut = 'VALIDEE'
+        """
+    )
     fun observerResume(sessionId: String): Flow<ResumeVentes>
 
     @Query("SELECT * FROM vente WHERE id = :id")

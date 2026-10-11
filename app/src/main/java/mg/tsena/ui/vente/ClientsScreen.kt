@@ -232,6 +232,11 @@ fun ChoixClientDialog(
                         ListItem(
                             headlineContent = { Text(c.client.nom) },
                             supportingContent = { Text(Telephone.formater(c.client.telephone)) },
+                            trailingContent = {
+                                if (c.creditDu > 0) {
+                                    Text("Doit ${Montant.formater(c.creditDu)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                                }
+                            },
                             modifier = Modifier.clickable { onChoisir(c) },
                         )
                     }

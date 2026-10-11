@@ -36,6 +36,8 @@ import mg.tsena.ui.appro.TransfertFormScreen
 import mg.tsena.ui.appro.TransfertScreen
 import mg.tsena.ui.appro.TransfertsScreen
 import mg.tsena.ui.catalogue.CategoriesScreen
+import mg.tsena.ui.credit.CreditsScreen
+import mg.tsena.ui.rapports.PerformanceScreen
 import mg.tsena.ui.compta.ComptabiliteScreen
 import mg.tsena.ui.compta.GrandLivreScreen
 import mg.tsena.ui.compta.JournauxScreen
@@ -107,6 +109,8 @@ object Routes {
     const val GRAND_LIVRE = "comptabilite/compte/{numero}"
     const val TABLEAU_DE_BORD = "rapports"
     const val MODULE = "module/{nom}"
+    const val CREDITS = "credits"
+    const val PERFORMANCE = "rapports/performance"
     const val RAPPORT_VENTES = "rapports/ventes"
     const val ETAT_STOCKS = "rapports/stocks"
     const val ETATS_FINANCIERS = "rapports/etats"
@@ -355,6 +359,7 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
         composable(Routes.CLIENT) { entree ->
             ClientScreen(
                 clientId = entree.arguments?.getString("id").orEmpty(),
+                nomCommerce = etat.commerce.nom,
                 peutEncaisser = etat.utilisateur.peut(Permission.GERER_CAISSE),
                 onRetour = { nav.popBackStack() },
                 onVente = { id -> nav.navigate(Routes.venteDetail(id)) },
@@ -394,6 +399,16 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
                 onEtats = { nav.navigate(Routes.ETATS_FINANCIERS) },
                 onAlertes = { nav.navigate(Routes.ALERTES) },
             )
+        }
+        composable(Routes.CREDITS) {
+            CreditsScreen(
+                nomCommerce = etat.commerce.nom,
+                onRetour = { nav.popBackStack() },
+                onClient = { id -> nav.navigate(Routes.client(id)) },
+            )
+        }
+        composable(Routes.PERFORMANCE) {
+            PerformanceScreen(onRetour = { nav.popBackStack() }, onCredits = { nav.navigate(Routes.CREDITS) })
         }
         composable(Routes.RAPPORT_VENTES) { RapportVentesScreen(onRetour = { nav.popBackStack() }) }
         composable(Routes.ETAT_STOCKS) { EtatStocksScreen(onRetour = { nav.popBackStack() }) }

@@ -259,6 +259,8 @@ data class SessionAvecDetails(
 data class ResumeVentes(
     val nb: Int,
     val total: Long,
+    /** Part de ces ventes payée à crédit */
+    val credit: Long = 0,
 )
 
 data class ClientAvecCredit(

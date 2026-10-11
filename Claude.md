@@ -217,6 +217,11 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 - RG-V10 : Remise globale sur le ticket. Au-delà de `commerce.remise_max_pourcent` (10 % par défaut, réglé par le
   propriétaire), un vendeur doit faire saisir le code PIN d'un gérant ou du propriétaire (RG-V5), tracé dans l'audit.
 - RG-V11 : Numéros sans trou `V-000001` (ventes) et `RV-000001` (retours). Le ticket est partagé par WhatsApp.
+- RG-V13 : **Suivi des crédits** : chaque vente à crédit a son reste dû = crédit − retours sur crédit de cette vente
+  − remboursements du client, imputés de la plus ancienne vente à la plus récente (`credit/Credits.kt`, testé).
+  Retard au-delà de 30 jours ; impayés par ancienneté (0-30, 31-60, 61-90, > 90 jours). L'impayé du client
+  s'affiche dès qu'il est choisi à la vente ; relance par WhatsApp. La caisse et les rapports séparent comptant
+  et crédit (le crédit ne rentre en caisse qu'au remboursement ; en comptabilité il passe par 411).
 - RG-V8 : Téléphone client : numéro malgache valide (10 chiffres commençant par 0, ou +261 suivi de 9 chiffres),
   enregistré au format normalisé `+261XXXXXXXXX`, unique par client.
 
@@ -442,3 +447,6 @@ app/src/main/java/mg/tsena/
   stock initial, 3 fournisseurs, commande reçue en partie, 3 clients, caisse ouverte, 4 ventes (dont gros à crédit),
   2 dépenses, paiement fournisseur. Codes PIN : propriétaire 1234, gérante 2222, vendeuse 3333, magasinier 4444.
   Grandes icônes de l'accueil : une couleur par module (`Module.couleur`).
+- **Crédits et performance** : module « Crédits clients » (suivi par client et par vente, ancienneté, relances),
+  tableau « Performance » avec graphiques Compose (CA par jour, comptant / crédit sur six mois, meilleurs produits,
+  impayés par ancienneté) ; palette de graphiques = palette de référence validée (bleu / orange, rampe bleue).
