@@ -285,6 +285,11 @@ Schémas d'écritures types (PCG 2005) :
   Annulations de vente et de dépense : contre-passation. Pertes, ventes et retours ne mouvementent pas le stock
   comptable : le compte 37 est ajusté (contrepartie 6037) à la valeur CMUP de tous les dépôts à chaque inventaire
   validé, à la clôture d'exercice, ou à la demande (« Mettre à jour la valeur du stock »).
+- RG-K11 : **États** (S7), recalculés depuis les écritures, sans l'écriture de clôture de l'exercice :
+  compte de résultat par nature (CA 70-72 ; consommations 60-62 ; personnel 64 ; impôts 63 ; autres produits /
+  charges 75, 78 / 65, 68 ; financier 76 / 66), bilan (classes 2 à 5 selon le sens du solde, résultats antérieurs
+  = 12 + charges et produits cumulés hors exercice), flux de trésorerie par méthode directe (chaque écriture
+  touchant la classe 5 classée selon sa contrepartie principale), balance cumulée. Partage en texte (WhatsApp).
 - RG-K10 : Exercices créés automatiquement selon le mois de début du commerce. Clôture (propriétaire, après la date
   de fin) : variation de stock puis solde des classes 6 et 7 vers 120 / 129. Les comptes de bilan sont cumulés
   depuis l'origine (pas d'écritures d'à-nouveaux).
@@ -401,3 +406,8 @@ app/src/main/java/mg/tsena/
   retours fournisseurs, paiements, dépenses, remboursements, apports / retraits, écarts de caisse, stock initial,
   inventaires), journaux par mois, grand livre par compte. Permission `GERER_COMPTABILITE` (propriétaire).
   Reporté : balance, bilan, compte de résultat, flux de trésorerie (S7).
+- **S7** (code écrit, non compilé localement) : tableau de bord (ventes et marge du jour et du mois, dépenses,
+  valeur du stock, crédits clients, dettes fournisseurs, alertes), rapport des ventes et marges par mois (par
+  produit et point de vente, retours et remises déduits), état des stocks valorisé par dépôt, états financiers
+  par exercice (compte de résultat, bilan, flux de trésorerie, balance) partageables. Correction : salaires au
+  compte 641 (et non 661, charges financières).

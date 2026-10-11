@@ -118,13 +118,6 @@ class HomeViewModel(
 
 private const val UN_JOUR_MS = 24 * 60 * 60 * 1000L
 
-private class ModuleAVenir(val nom: String, val sprint: String, val icone: @Composable () -> Painter)
-
-/** Modules prévus dans les sprints suivants (Claude.md §6). */
-private val MODULES_A_VENIR = listOf(
-    ModuleAVenir("États financiers et tableaux de bord", "S7") { painterResource(R.drawable.ic_comptabilite) },
-)
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -282,6 +275,12 @@ fun HomeScreen(
             if (utilisateur.peut(Permission.VOIR_COMPTABILITE)) {
                 Text("Comptabilité", style = MaterialTheme.typography.titleMedium)
                 Card(Modifier.fillMaxWidth()) {
+                    EntreeMenu("Tableau de bord", "Ventes, marges, stock, dettes et créances", painterResource(R.drawable.ic_stock)) {
+                        onOuvrir(Routes.TABLEAU_DE_BORD)
+                    }
+                    EntreeMenu("États financiers", "Bilan, compte de résultat, flux de trésorerie", painterResource(R.drawable.ic_comptabilite)) {
+                        onOuvrir(Routes.ETATS_FINANCIERS)
+                    }
                     EntreeMenu("Comptabilité", "Journaux, plan comptable PCG 2005, exercices", painterResource(R.drawable.ic_comptabilite)) {
                         onOuvrir(Routes.COMPTABILITE)
                     }
@@ -299,17 +298,6 @@ fun HomeScreen(
                         supportingContent = { Text("Comptes, rôles et codes PIN") },
                         leadingContent = { Icon(Icons.Filled.Person, contentDescription = null) },
                         trailingContent = { OutlinedButton(onClick = onUtilisateurs) { Text("Gérer") } },
-                    )
-                }
-            }
-
-            Text("Bientôt disponible", style = MaterialTheme.typography.titleMedium)
-            Card(Modifier.fillMaxWidth()) {
-                MODULES_A_VENIR.forEach { module ->
-                    ListItem(
-                        headlineContent = { Text(module.nom) },
-                        leadingContent = { Icon(module.icone(), contentDescription = null) },
-                        trailingContent = { Text(module.sprint, style = MaterialTheme.typography.labelMedium) },
                     )
                 }
             }

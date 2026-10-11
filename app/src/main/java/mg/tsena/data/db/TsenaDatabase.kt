@@ -295,7 +295,7 @@ abstract class TsenaDatabase : RoomDatabase() {
             "Eau et électricité" to "6061",
             "Transport" to "624",
             "Téléphone et internet" to "626",
-            "Salaires" to "661",
+            "Salaires" to "641",
             "Entretien et réparations" to "615",
             "Fournitures de bureau" to "6064",
             "Frais bancaires et mobile money" to "627",
@@ -332,7 +332,7 @@ abstract class TsenaDatabase : RoomDatabase() {
             Triple("628", "Charges externes diverses", TypeCompte.CHARGE),
             Triple("635", "Autres impôts, taxes et versements assimilés", TypeCompte.CHARGE),
             Triple("658", "Charges diverses de gestion courante", TypeCompte.CHARGE),
-            Triple("661", "Rémunérations du personnel", TypeCompte.CHARGE),
+            Triple("641", "Rémunérations du personnel", TypeCompte.CHARGE),
             Triple("707", "Ventes de marchandises", TypeCompte.PRODUIT),
             Triple("758", "Produits divers de gestion courante", TypeCompte.PRODUIT),
         )

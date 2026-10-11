@@ -14,6 +14,7 @@ import mg.tsena.data.db.entity.MouvementAvecAuteur
 import mg.tsena.data.db.entity.MouvementStockEntity
 import mg.tsena.data.db.entity.StockEntity
 import mg.tsena.data.db.entity.StockProduit
+import mg.tsena.rapports.EtatStockLigne
 
 @Dao
 interface StockDao {
@@ -64,6 +65,21 @@ interface StockDao {
         """
     )
     fun observerAlertes(): Flow<List<AlerteStock>>
+
+    /** État des stocks (RG-K6) : produits présents ou en négatif, par dépôt. */
+    @Query(
+        """
+        SELECT d.nom AS depotNom, p.nom AS produitNom, p.code, u.symbole AS uniteSymbole,
+               s.quantite_milli AS quantiteMilli, s.cout_moyen_unitaire AS coutMoyenUnitaire
+        FROM stock s
+        JOIN depot d ON d.id = s.depot_id
+        JOIN produit p ON p.id = s.produit_id
+        JOIN unite u ON u.id = p.unite_id
+        WHERE s.quantite_milli != 0
+        ORDER BY d.nom COLLATE NOCASE, p.nom COLLATE NOCASE
+        """
+    )
+    fun observerEtat(): Flow<List<EtatStockLigne>>
 
     /** Toutes les lignes de stock, pour la valeur totale (RG-K7). */
     @Query("SELECT * FROM stock")

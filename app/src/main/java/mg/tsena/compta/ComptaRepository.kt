@@ -95,12 +95,20 @@ class ComptaRepository(
             comptable.ajusterStock("Variation de stock de clôture", date = dateCloture)
             val soldes = ecritureDao.soldesResultat(exercice.id).associate { it.numero to it.solde }
             val lignes = ReglesComptables.clotureResultat(soldes)
-            comptable.passer(Journal.OD, "Clôture de l'exercice : résultat", lignes, date = dateCloture)
+            comptable.passer(
+                Journal.OD, "Clôture de l'exercice : résultat", lignes,
+                PieceComptable(DOCUMENT_CLOTURE, exercice.id), date = dateCloture,
+            )
             val resultat = -soldes.values.sum()
             val date = maintenant()
             exerciceDao.modifier(exercice.copy(statut = StatutExercice.CLOTURE, dateCloture = date, cloturePar = auteur.id, updatedAt = date))
             audit.enregistrer(ActionAudit.CLOTURE_EXERCICE, "${exercice.dateDebut} – ${exercice.dateFin} : résultat ${Montant.formater(resultat)}")
             resultat
         }
+    }
+
+    companion object {
+        /** Écriture de clôture d'un exercice, exclue des états de cet exercice */
+        const val DOCUMENT_CLOTURE = "CLOTURE_EXERCICE"
     }
 }

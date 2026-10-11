@@ -16,6 +16,7 @@ import mg.tsena.compta.Comptable
 import mg.tsena.data.db.TsenaDatabase
 import mg.tsena.finance.FinanceRepository
 import mg.tsena.lieux.LieuRepository
+import mg.tsena.rapports.RapportRepository
 import mg.tsena.stock.StockRepository
 import mg.tsena.vente.VenteRepository
 
@@ -35,6 +36,7 @@ class AppContainer(context: Context) {
     val venteRepository = VenteRepository(database, session, audit, authRepository, stockRepository, comptable)
     val financeRepository = FinanceRepository(database, session, audit, comptable)
     val comptaRepository = ComptaRepository(database, session, audit, comptable)
+    val rapportRepository = RapportRepository(database, session)
 }
 
 class TsenaApp : Application() {

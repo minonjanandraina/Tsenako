@@ -22,6 +22,7 @@ import mg.tsena.data.db.entity.SessionAvecDetails
 import mg.tsena.data.db.entity.SessionCaisseEntity
 import mg.tsena.data.db.entity.VenteAvecDetails
 import mg.tsena.data.db.entity.VenteEntity
+import mg.tsena.rapports.LigneVenteRapport
 
 @Dao
 interface CaisseDao {
@@ -237,6 +238,23 @@ interface VenteDao {
         """
     )
     fun observerLignes(venteId: String): Flow<List<LigneVenteAvecProduit>>
+
+    /** Lignes des ventes validées d'une période, pour les rapports de ventes et de marge. */
+    @Query(
+        """
+        SELECT v.id AS venteId, pv.nom AS pointVenteNom, p.id AS produitId, p.nom AS produitNom,
+               u.symbole AS uniteSymbole, l.quantite_milli AS quantiteMilli,
+               l.quantite_retournee_milli AS quantiteRetourneeMilli, l.montant, l.cout_unitaire AS coutUnitaire,
+               v.total_brut AS totalBrut, v.total_net AS totalNet
+        FROM ligne_vente l
+        JOIN vente v ON v.id = l.vente_id
+        JOIN point_vente pv ON pv.id = v.point_vente_id
+        JOIN produit p ON p.id = l.produit_id
+        JOIN unite u ON u.id = p.unite_id
+        WHERE v.statut = 'VALIDEE' AND v.date >= :debut AND v.date < :fin
+        """
+    )
+    fun observerLignesRapport(debut: Long, fin: Long): Flow<List<LigneVenteRapport>>
 
     @Query("SELECT * FROM paiement_vente WHERE vente_id = :venteId")
     fun observerPaiements(venteId: String): Flow<List<PaiementVenteEntity>>

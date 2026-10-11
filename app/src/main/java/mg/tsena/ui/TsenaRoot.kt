@@ -44,6 +44,10 @@ import mg.tsena.ui.catalogue.ProduitFormScreen
 import mg.tsena.ui.catalogue.ProduitsScreen
 import mg.tsena.ui.catalogue.UnitesScreen
 import mg.tsena.ui.home.HomeScreen
+import mg.tsena.ui.rapports.EtatStocksScreen
+import mg.tsena.ui.rapports.EtatsFinanciersScreen
+import mg.tsena.ui.rapports.RapportVentesScreen
+import mg.tsena.ui.rapports.TableauDeBordScreen
 import mg.tsena.ui.lieux.LieuxScreen
 import mg.tsena.ui.login.LoginScreen
 import mg.tsena.ui.restauration.RestaurationDialog
@@ -99,6 +103,10 @@ object Routes {
     const val JOURNAUX = "comptabilite/journaux"
     const val PLAN_COMPTABLE = "comptabilite/plan"
     const val GRAND_LIVRE = "comptabilite/compte/{numero}"
+    const val TABLEAU_DE_BORD = "rapports"
+    const val RAPPORT_VENTES = "rapports/ventes"
+    const val ETAT_STOCKS = "rapports/stocks"
+    const val ETATS_FINANCIERS = "rapports/etats"
 
     fun produit(id: String?) = if (id == null) "produit" else "produit?id=$id"
     fun ficheStock(produitId: String, depotId: String) = "stocks/fiche/$produitId/$depotId"
@@ -365,6 +373,18 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
                 onCompte = { numero -> nav.navigate(Routes.grandLivre(numero)) },
             )
         }
+        composable(Routes.TABLEAU_DE_BORD) {
+            TableauDeBordScreen(
+                onRetour = { nav.popBackStack() },
+                onVentes = { nav.navigate(Routes.RAPPORT_VENTES) },
+                onStocks = { nav.navigate(Routes.ETAT_STOCKS) },
+                onEtats = { nav.navigate(Routes.ETATS_FINANCIERS) },
+                onAlertes = { nav.navigate(Routes.ALERTES) },
+            )
+        }
+        composable(Routes.RAPPORT_VENTES) { RapportVentesScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.ETAT_STOCKS) { EtatStocksScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.ETATS_FINANCIERS) { EtatsFinanciersScreen(nomCommerce = etat.commerce.nom, onRetour = { nav.popBackStack() }) }
         composable(Routes.GRAND_LIVRE) { entree ->
             GrandLivreScreen(numero = entree.arguments?.getString("numero").orEmpty(), onRetour = { nav.popBackStack() })
         }

@@ -12,6 +12,7 @@ import mg.tsena.data.db.entity.ExerciceEntity
 import mg.tsena.data.db.entity.LigneEcritureAvecCompte
 import mg.tsena.data.db.entity.LigneEcritureEntity
 import mg.tsena.data.db.entity.MouvementCompte
+import mg.tsena.compta.LigneComptable
 
 @Dao
 interface CompteDao {
@@ -93,6 +94,18 @@ interface EcritureDao {
         """
     )
     fun observerGrandLivre(numero: String): Flow<List<MouvementCompte>>
+
+    /** Lignes jusqu'à [fin] (exclue), sans l'écriture de clôture de l'exercice [exerciceId], pour les états. */
+    @Query(
+        """
+        SELECT e.id AS ecritureId, e.date, e.document_type AS documentType, l.compte_numero AS compte, l.debit, l.credit
+        FROM ligne_ecriture l
+        JOIN ecriture e ON e.id = l.ecriture_id
+        WHERE e.date < :fin
+          AND (e.document_id IS NULL OR e.document_id != :exerciceId OR e.document_type != 'CLOTURE_EXERCICE')
+        """
+    )
+    suspend fun lignesJusqua(fin: Long, exerciceId: String): List<LigneComptable>
 
     @Query("SELECT COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) FROM ligne_ecriture WHERE compte_numero = :numero")
     suspend fun solde(numero: String): Long
