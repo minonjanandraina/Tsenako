@@ -152,6 +152,8 @@ data class LigneReceptionEntity(
     /** Coût d'entrée en stock (montant / quantité, arrondi) */
     @ColumnInfo(name = "prix_unitaire") val prixUnitaire: Long,
     val montant: Long,
+    /** Cumul des retours au fournisseur */
+    @ColumnInfo(name = "quantite_retournee_milli") val quantiteRetourneeMilli: Long = 0,
 )
 
 /** RG-T2 : créé à l'envoi (sortie du dépôt source), reçu ou annulé ensuite. */
@@ -202,12 +204,16 @@ data class LigneTransfertEntity(
 
 // --- Résultats de requêtes ---
 
-/** Fournisseur avec son total d'achats reçus (dette avant paiements, qui arrivent au sprint S5). */
+/** RG-A3 : solde dû = réceptions − retours au fournisseur − paiements. */
 data class FournisseurAvecSolde(
     @Embedded val fournisseur: FournisseurEntity,
     @ColumnInfo(name = "total_achats") val totalAchats: Long,
     @ColumnInfo(name = "nb_receptions") val nbReceptions: Int,
-)
+    @ColumnInfo(name = "total_retours") val totalRetours: Long,
+    @ColumnInfo(name = "total_paye") val totalPaye: Long,
+) {
+    val solde: Long get() = totalAchats - totalRetours - totalPaye
+}
 
 data class ConversionAvecUnite(
     @Embedded val conversion: ConversionUniteEntity,

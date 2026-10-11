@@ -83,7 +83,7 @@ exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jama
   statut (`BROUILLON`, `ENVOYEE`, `PARTIELLE`, `RECUE`, `ANNULEE`)
 - **ligne_commande** : commande_id, produit_id, quantite, prix_unitaire, montant, quantite_recue (cumul des réceptions)
 - **reception** : numero (`BR-000001`), commande_id (nullable), fournisseur_id, depot_id, date, montant_total,
-  reference (n° facture / BL du fournisseur) — le statut de paiement viendra avec les paiements (S5)
+  reference (n° facture / BL du fournisseur) — reste à payer = montant − retours − paiements rattachés
 - **ligne_reception** : reception_id, produit_id, ligne_commande_id (nullable), quantite, prix_unitaire, montant
 - **transfert** : numero (`TR-000001`), depot_source_id, depot_destination_id, date, statut (`EN_TRANSIT`, `RECU`, `ANNULE`),
   date_reception, recu_par, motif_ecart, note — créé directement à l'envoi (pas de brouillon enregistré)
@@ -228,7 +228,19 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 ### 5.8 Charges & dépenses
 - RG-D1 : Toute dépense a une catégorie, elle-même liée à un compte de charge (classe 6).
 - RG-D2 : Une dépense payée en espèces génère un décaissement dans la session de caisse ouverte.
-- RG-D3 : Justificatif (photo) recommandé, obligatoire au-delà d'un montant paramétrable.
+- RG-D3 : Justificatif (photo) recommandé, obligatoire au-delà d'un montant paramétrable
+  (`commerce.seuil_justificatif`, 50 000 Ar par défaut, réglé par le propriétaire).
+- RG-D4 : Modes de règlement des dépenses, paiements fournisseurs et remboursements clients : espèces ou mobile money
+  (opération dans la caisse **ouverte** choisie ; une sortie d'espèces ne dépasse pas les espèces en caisse) ou
+  « hors caisse » (banque, argent du propriétaire : aucune opération de caisse). Numéros `DP`, `PF`, `EC`.
+- RG-D5 : Une dépense s'annule (motif) tant que sa caisse est ouverte, l'argent y revient ; hors caisse, toujours.
+- RG-D6 : Catégories pré-remplies à la création de la base, chacune avec son compte de charge (classe 6).
+- RG-A9 : Paiement fournisseur rattaché à une réception (au plus son reste à payer) ou en acompte (au plus le solde).
+  Une réception est en retard si elle n'est pas soldée après date + délai de paiement du fournisseur.
+- RG-A10 : Retour au fournisseur depuis une réception (`RF`) : quantités ≤ reçu − déjà retourné, sortie de stock
+  `RETOUR_FOURNISSEUR` au CMUP, la dette diminue du prix d'achat (exact pour une ligne entière).
+- RG-V12 : Remboursement d'un crédit client (`EC`), au plus le crédit dû. Crédit dû = ventes à crédit − retours
+  déduits du crédit − remboursements.
 
 ### 5.9 Comptabilité
 - RG-K1 : **Partie double** : pour chaque écriture, Σ débit = Σ crédit.
@@ -369,3 +381,7 @@ app/src/main/java/mg/tsena/
   rattachement vendeur ↔ point de vente (RG-X2, pris en compte à la connexion).
   Reporté : encaissement des crédits clients et dépenses en caisse (S5), écritures comptables des ventes et écarts
   de caisse (S6), lecture de codes-barres par la caméra.
+- **S5** (code écrit, non compilé localement) : dépenses par mois avec totaux par catégorie, justificatif photo,
+  annulation, catégories (compte de charge) ; fiche fournisseur (solde, échéances, retards, paiements, acomptes) ;
+  retours au fournisseur ; fiche client (crédit dû, achats, remboursements). Mode `BANQUE` (hors caisse).
+  Reporté : écritures comptables (S6), annulation d'un paiement fournisseur ou d'un remboursement client.

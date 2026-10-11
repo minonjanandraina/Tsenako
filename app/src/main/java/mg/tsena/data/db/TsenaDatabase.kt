@@ -8,17 +8,22 @@ import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
 import mg.tsena.data.db.dao.CaisseDao
+import mg.tsena.data.db.dao.CategorieDepenseDao
 import mg.tsena.data.db.dao.ClientDao
 import mg.tsena.data.db.dao.CommandeDao
 import mg.tsena.data.db.dao.CommerceDao
 import mg.tsena.data.db.dao.ConversionUniteDao
+import mg.tsena.data.db.dao.DepenseDao
+import mg.tsena.data.db.dao.EncaissementClientDao
 import mg.tsena.data.db.dao.FournisseurDao
 import mg.tsena.data.db.dao.InventaireDao
 import mg.tsena.data.db.dao.JournalAuditDao
 import mg.tsena.data.db.dao.LieuDao
+import mg.tsena.data.db.dao.PaiementFournisseurDao
 import mg.tsena.data.db.dao.PrixPointVenteDao
 import mg.tsena.data.db.dao.ProduitDao
 import mg.tsena.data.db.dao.ReceptionDao
+import mg.tsena.data.db.dao.RetourFournisseurDao
 import mg.tsena.data.db.dao.StockDao
 import mg.tsena.data.db.dao.TransfertDao
 import mg.tsena.data.db.dao.TypeProduitDao
@@ -26,31 +31,38 @@ import mg.tsena.data.db.dao.UniteDao
 import mg.tsena.data.db.dao.UtilisateurDao
 import mg.tsena.data.db.dao.VenteDao
 import mg.tsena.data.db.entity.CaisseEntity
+import mg.tsena.data.db.entity.CategorieDepenseEntity
 import mg.tsena.data.db.entity.ClientEntity
 import mg.tsena.data.db.entity.CommandeFournisseurEntity
 import mg.tsena.data.db.entity.CommerceEntity
 import mg.tsena.data.db.entity.ConversionUniteEntity
+import mg.tsena.data.db.entity.DepenseEntity
 import mg.tsena.data.db.entity.DepotEntity
+import mg.tsena.data.db.entity.EncaissementClientEntity
 import mg.tsena.data.db.entity.FournisseurEntity
 import mg.tsena.data.db.entity.InventaireEntity
 import mg.tsena.data.db.entity.JournalAuditEntity
 import mg.tsena.data.db.entity.LigneCommandeEntity
 import mg.tsena.data.db.entity.LigneInventaireEntity
 import mg.tsena.data.db.entity.LigneReceptionEntity
+import mg.tsena.data.db.entity.LigneRetourFournisseurEntity
 import mg.tsena.data.db.entity.LigneRetourVenteEntity
 import mg.tsena.data.db.entity.LigneTransfertEntity
 import mg.tsena.data.db.entity.LigneVenteEntity
 import mg.tsena.data.db.entity.ModePaiement
 import mg.tsena.data.db.entity.MouvementStockEntity
 import mg.tsena.data.db.entity.OperationCaisseEntity
+import mg.tsena.data.db.entity.PaiementFournisseurEntity
 import mg.tsena.data.db.entity.PaiementVenteEntity
 import mg.tsena.data.db.entity.PointVenteEntity
 import mg.tsena.data.db.entity.PrixPointVenteEntity
 import mg.tsena.data.db.entity.ProduitEntity
 import mg.tsena.data.db.entity.ReceptionEntity
+import mg.tsena.data.db.entity.RetourFournisseurEntity
 import mg.tsena.data.db.entity.RetourVenteEntity
 import mg.tsena.data.db.entity.SessionCaisseEntity
 import mg.tsena.data.db.entity.StatutCommande
+import mg.tsena.data.db.entity.StatutDepense
 import mg.tsena.data.db.entity.StatutInventaire
 import mg.tsena.data.db.entity.StatutSession
 import mg.tsena.data.db.entity.StatutTransfert
@@ -136,6 +148,12 @@ class Converters {
 
     @TypeConverter
     fun texteVersTypePaiement(texte: String): TypePaiement = TypePaiement.valueOf(texte)
+
+    @TypeConverter
+    fun statutDepenseVersTexte(valeur: StatutDepense): String = valeur.name
+
+    @TypeConverter
+    fun texteVersStatutDepense(texte: String): StatutDepense = StatutDepense.valueOf(texte)
 }
 
 @Database(
@@ -171,6 +189,12 @@ class Converters {
         PaiementVenteEntity::class,
         RetourVenteEntity::class,
         LigneRetourVenteEntity::class,
+        CategorieDepenseEntity::class,
+        DepenseEntity::class,
+        PaiementFournisseurEntity::class,
+        EncaissementClientEntity::class,
+        RetourFournisseurEntity::class,
+        LigneRetourFournisseurEntity::class,
     ],
     version = TsenaDatabase.VERSION,
     exportSchema = true,
@@ -195,6 +219,11 @@ abstract class TsenaDatabase : RoomDatabase() {
     abstract fun clientDao(): ClientDao
     abstract fun prixPointVenteDao(): PrixPointVenteDao
     abstract fun venteDao(): VenteDao
+    abstract fun categorieDepenseDao(): CategorieDepenseDao
+    abstract fun depenseDao(): DepenseDao
+    abstract fun paiementFournisseurDao(): PaiementFournisseurDao
+    abstract fun retourFournisseurDao(): RetourFournisseurDao
+    abstract fun encaissementClientDao(): EncaissementClientDao
 
     companion object {
         /**
@@ -222,9 +251,32 @@ abstract class TsenaDatabase : RoomDatabase() {
             Triple("Bouteille", "btl", false),
         )
 
+        /**
+         * RG-D1 : catégories de dépenses proposées, avec leur compte de charge PCG 2005
+         * (numéros à faire valider par un comptable avant le sprint S6).
+         */
+        private val CATEGORIES_DEPENSES = listOf(
+            "Loyer" to "613",
+            "Eau et électricité" to "6061",
+            "Transport" to "624",
+            "Téléphone et internet" to "626",
+            "Salaires" to "661",
+            "Entretien et réparations" to "615",
+            "Fournitures de bureau" to "6064",
+            "Frais bancaires et mobile money" to "627",
+            "Impôts et taxes" to "635",
+            "Divers" to "628",
+        )
+
         private object DonneesInitiales : RoomDatabase.Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 val date = maintenant()
+                CATEGORIES_DEPENSES.forEach { (nom, compte) ->
+                    db.execSQL(
+                        "INSERT INTO categorie_depense (id, nom, compte_numero, actif, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)",
+                        arrayOf<Any>(nouvelId(), nom, compte, date, date),
+                    )
+                }
                 UNITES_PAR_DEFAUT.forEach { (nom, symbole, decimale) ->
                     db.execSQL(
                         "INSERT INTO unite (id, nom, symbole, decimale, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",

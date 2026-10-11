@@ -23,6 +23,8 @@ enum class ModePaiement(val libelle: String) {
     MOBILE_MONEY("Mobile money"),
     CARTE("Carte"),
     CREDIT("Crédit"),
+    /** Dépenses et paiements fournisseurs réglés hors caisse (banque, poche du propriétaire…) */
+    BANQUE("Banque / hors caisse"),
 }
 
 enum class TypeVente(val libelle: String) { DETAIL("Détail"), GROS("Gros") }
@@ -261,7 +263,7 @@ data class ResumeVentes(
 
 data class ClientAvecCredit(
     @Embedded val client: ClientEntity,
-    /** Ventes à crédit − retours déduits du crédit ; les encaissements viendront au sprint S5 */
+    /** Ventes à crédit − retours déduits du crédit − remboursements du client */
     @ColumnInfo(name = "credit_du") val creditDu: Long,
 )
 

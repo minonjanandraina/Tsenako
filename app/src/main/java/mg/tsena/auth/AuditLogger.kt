@@ -54,6 +54,13 @@ enum class ActionAudit {
     REMISE_AUTORISEE,
     ANNULATION_VENTE,
     RETOUR_VENTE,
+    CATEGORIE_DEPENSE,
+    PARAMETRE_JUSTIFICATIF,
+    DEPENSE,
+    ANNULATION_DEPENSE,
+    PAIEMENT_FOURNISSEUR,
+    ENCAISSEMENT_CLIENT,
+    RETOUR_FOURNISSEUR,
 }
 
 class AuditLogger(private val dao: JournalAuditDao, private val session: SessionManager) {

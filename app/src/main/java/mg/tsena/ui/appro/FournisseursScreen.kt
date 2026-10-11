@@ -104,7 +104,11 @@ class FournisseursViewModel(private val appro: ApproRepository) : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FournisseursScreen(onRetour: () -> Unit, vm: FournisseursViewModel = viewModel(factory = FournisseursViewModel.Factory)) {
+fun FournisseursScreen(
+    onRetour: () -> Unit,
+    onOuvrir: (fournisseurId: String) -> Unit,
+    vm: FournisseursViewModel = viewModel(factory = FournisseursViewModel.Factory),
+) {
     val fournisseurs by vm.fournisseurs.collectAsStateWithLifecycle()
 
     Scaffold(
@@ -139,13 +143,19 @@ fun FournisseursScreen(onRetour: () -> Unit, vm: FournisseursViewModel = viewMod
                         )
                     },
                     trailingContent = {
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(Montant.formater(f.totalAchats), style = MaterialTheme.typography.titleSmall)
-                            Text("achats", style = MaterialTheme.typography.bodySmall)
+                        if (f.solde != 0L) {
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    Montant.formater(f.solde),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = if (f.solde > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                )
+                                Text(if (f.solde > 0) "à payer" else "avoir", style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     },
                     modifier = Modifier
-                        .clickable { vm.ouvrir(FournisseursViewModel.Edition.Existant(f.fournisseur)) }
+                        .clickable { onOuvrir(f.fournisseur.id) }
                         .alpha(if (f.fournisseur.actif) 1f else 0.5f),
                 )
             }
@@ -158,7 +168,7 @@ fun FournisseursScreen(onRetour: () -> Unit, vm: FournisseursViewModel = viewMod
 }
 
 @Composable
-private fun FournisseurDialog(
+fun FournisseurDialog(
     fournisseur: FournisseurEntity?,
     erreur: String?,
     onValider: (nom: String, telephone: String, adresse: String, nif: String, delai: String, actif: Boolean) -> Unit,

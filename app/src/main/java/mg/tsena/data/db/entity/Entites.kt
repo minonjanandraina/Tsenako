@@ -26,6 +26,8 @@ data class CommerceEntity(
     @ColumnInfo(name = "stock_negatif_autorise") val stockNegatifAutorise: Boolean = false,
     /** RG-V5 : remise maximale (en % du total) qu'un vendeur peut accorder sans autorisation d'un gérant */
     @ColumnInfo(name = "remise_max_pourcent") val remiseMaxPourcent: Int = 10,
+    /** RG-D3 : montant de dépense au-delà duquel le justificatif (photo) est obligatoire */
+    @ColumnInfo(name = "seuil_justificatif") val seuilJustificatif: Long = 50_000,
     @ColumnInfo(name = "created_at") val createdAt: Long = maintenant(),
     @ColumnInfo(name = "updated_at") val updatedAt: Long = createdAt,
     @ColumnInfo(name = "created_by") val createdBy: String? = null,

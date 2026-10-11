@@ -56,6 +56,18 @@ interface CaisseDao {
     )
     fun observerSessionsFermees(pointVenteId: String, limite: Int): Flow<List<SessionAvecDetails>>
 
+    @Query(
+        """
+        SELECT s.*, c.nom AS caisse_nom, c.point_vente_id, u.nom AS ouvert_par_nom
+        FROM session_caisse s
+        JOIN caisse c ON c.id = s.caisse_id
+        JOIN utilisateur u ON u.id = s.utilisateur_id
+        WHERE s.statut = 'OUVERTE'
+        ORDER BY c.nom COLLATE NOCASE
+        """
+    )
+    fun observerSessionsOuvertes(): Flow<List<SessionAvecDetails>>
+
     @Query("SELECT * FROM session_caisse WHERE caisse_id = :caisseId AND statut = 'OUVERTE' LIMIT 1")
     suspend fun getSessionOuverte(caisseId: String): SessionCaisseEntity?
 
@@ -80,14 +92,15 @@ interface CaisseDao {
 
 @Dao
 interface ClientDao {
-    /** Crédit dû = ventes à crédit non annulées − retours déduits du crédit. */
+    /** Crédit dû = ventes à crédit non annulées − retours déduits du crédit − encaissements. */
     @Query(
         """
         SELECT c.*,
                COALESCE((SELECT SUM(p.montant) FROM paiement_vente p JOIN vente v ON v.id = p.vente_id
                          WHERE v.client_id = c.id AND v.statut = 'VALIDEE' AND p.mode = 'CREDIT'), 0)
              - COALESCE((SELECT SUM(r.montant) FROM retour_vente r JOIN vente v ON v.id = r.vente_id
-                         WHERE v.client_id = c.id AND r.mode_remboursement = 'CREDIT'), 0) AS credit_du
+                         WHERE v.client_id = c.id AND r.mode_remboursement = 'CREDIT'), 0)
+             - COALESCE((SELECT SUM(e.montant) FROM encaissement_client e WHERE e.client_id = c.id), 0) AS credit_du
         FROM client c
         WHERE c.deleted_at IS NULL
         ORDER BY c.nom COLLATE NOCASE
@@ -197,6 +210,21 @@ interface VenteDao {
         """
     )
     fun observer(id: String): Flow<VenteAvecDetails?>
+
+    @Query(
+        """
+        SELECT v.*, pv.nom AS point_vente_nom, c.nom AS client_nom, c.telephone AS client_telephone,
+               u.nom AS vendeur_nom, s.statut AS session_statut
+        FROM vente v
+        JOIN point_vente pv ON pv.id = v.point_vente_id
+        JOIN session_caisse s ON s.id = v.session_caisse_id
+        LEFT JOIN client c ON c.id = v.client_id
+        LEFT JOIN utilisateur u ON u.id = v.created_by
+        WHERE v.client_id = :clientId
+        ORDER BY v.date DESC
+        """
+    )
+    fun observerVentesClient(clientId: String): Flow<List<VenteAvecDetails>>
 
     @Query(
         """

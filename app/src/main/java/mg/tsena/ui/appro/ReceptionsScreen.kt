@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -18,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -25,9 +28,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,6 +42,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import java.io.File
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -53,17 +61,20 @@ import mg.tsena.data.db.entity.ConversionAvecUnite
 import mg.tsena.data.db.entity.DepotEntity
 import mg.tsena.data.db.entity.FournisseurEntity
 import mg.tsena.data.db.entity.LigneReceptionAvecProduit
+import mg.tsena.data.db.entity.LigneReceptionRetournable
+import mg.tsena.data.db.entity.ReceptionAPayer
 import mg.tsena.data.db.entity.ReceptionAvecDetails
+import mg.tsena.data.db.entity.RetourFournisseurEntity
 import mg.tsena.data.db.entity.StockProduit
 import mg.tsena.domain.Montant
 import mg.tsena.domain.Quantite
 import mg.tsena.domain.RegleMetierException
 import mg.tsena.domain.formaterDateHeure
+import mg.tsena.finance.FinanceRepository
 import mg.tsena.lieux.LieuRepository
 import mg.tsena.stock.StockRepository
 import mg.tsena.ui.common.ChampTexte
 import mg.tsena.ui.common.Selecteur
-import java.io.File
 
 // --- Liste des réceptions ---
 
@@ -321,17 +332,68 @@ fun ReceptionFormScreen(
 
 // --- Fiche d'une réception ---
 
-class ReceptionViewModel(receptionId: String, appro: ApproRepository, private val photos: PhotoManager) : ViewModel() {
+class ReceptionViewModel(
+    private val receptionId: String,
+    private val appro: ApproRepository,
+    finance: FinanceRepository,
+    private val photos: PhotoManager,
+) : ViewModel() {
     val reception: StateFlow<ReceptionAvecDetails?> = appro.observerReception(receptionId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val lignes: StateFlow<List<LigneReceptionAvecProduit>> = appro.observerLignesReception(receptionId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val aPayer: StateFlow<ReceptionAPayer?> = finance.observerReceptionAPayer(receptionId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val retours: StateFlow<List<RetourFournisseurEntity>> = appro.observerRetoursFournisseur(receptionId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val retournables: StateFlow<List<LigneReceptionRetournable>> = appro.observerLignesRetournables(receptionId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    var retourOuvert by mutableStateOf(false)
+        private set
+    var erreur by mutableStateOf<String?>(null)
+        private set
+    var message by mutableStateOf<String?>(null)
+        private set
 
     fun fichierPhoto(chemin: String): File = photos.fichier(chemin)
 
+    fun ouvrirRetour() {
+        erreur = null
+        message = null
+        retourOuvert = true
+    }
+
+    fun fermerRetour() {
+        retourOuvert = false
+    }
+
+    fun retourner(saisies: Map<String, String>, motif: String) {
+        val quantites = mutableMapOf<String, Long>()
+        retournables.value.forEach { l ->
+            val texte = saisies[l.ligne.id]?.takeIf { it.isNotBlank() } ?: return@forEach
+            quantites[l.ligne.id] = Quantite.parser(texte, l.uniteDecimale) ?: run {
+                erreur = "Quantité invalide pour « ${l.nom} »."
+                return
+            }
+        }
+        erreur = null
+        viewModelScope.launch {
+            try {
+                val montant = appro.retournerAuFournisseur(receptionId, quantites, motif)
+                retourOuvert = false
+                message = "Retour enregistré : ${Montant.formater(montant)} déduits de la dette fournisseur."
+            } catch (e: RegleMetierException) {
+                erreur = e.message
+            }
+        }
+    }
+
     companion object {
         fun factory(receptionId: String) = viewModelFactory {
-            initializer { ReceptionViewModel(receptionId, container.approRepository, container.photoManager) }
+            initializer {
+                ReceptionViewModel(receptionId, container.approRepository, container.financeRepository, container.photoManager)
+            }
         }
     }
 }
@@ -340,12 +402,17 @@ class ReceptionViewModel(receptionId: String, appro: ApproRepository, private va
 @Composable
 fun ReceptionScreen(
     receptionId: String,
+    peutRetourner: Boolean,
     onRetour: () -> Unit,
     vm: ReceptionViewModel = viewModel(key = "reception_$receptionId", factory = ReceptionViewModel.factory(receptionId)),
 ) {
     val reception by vm.reception.collectAsStateWithLifecycle()
     val lignes by vm.lignes.collectAsStateWithLifecycle()
+    val aPayer by vm.aPayer.collectAsStateWithLifecycle()
+    val retours by vm.retours.collectAsStateWithLifecycle()
+    val retournables by vm.retournables.collectAsStateWithLifecycle()
     val r = reception
+    val resteARetourner = retournables.any { it.ligne.quantiteMilli > it.ligne.quantiteRetourneeMilli }
 
     Scaffold(
         topBar = {
@@ -368,6 +435,16 @@ fun ReceptionScreen(
                     r.reception.reference?.let { LigneInfo("Référence", it) }
                     r.auteurNom?.let { LigneInfo("Saisie par", it) }
                     LigneInfo("Montant", Montant.formater(r.reception.montantTotal))
+                    aPayer?.let { p ->
+                        if (p.totalRetours > 0) LigneInfo("Retours", "−" + Montant.formater(p.totalRetours))
+                        LigneInfo("Payé", Montant.formater(p.totalPaye))
+                        Text(
+                            if (p.reste > 0) "Reste à payer : ${Montant.formater(p.reste)}" else "Payée",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (p.reste > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    vm.message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
                 }
             }
             item { TitreSection("Produits reçus") }
@@ -378,17 +455,71 @@ fun ReceptionScreen(
                     quantite = "${Quantite.formater(l.ligne.quantiteMilli)} ${l.uniteSymbole} × ${Montant.formater(l.ligne.prixUnitaire)}",
                     detail = null,
                     montant = l.ligne.montant,
+                    complement = if (l.ligne.quantiteRetourneeMilli > 0) {
+                        "Retourné : ${Quantite.formater(l.ligne.quantiteRetourneeMilli)} ${l.uniteSymbole}"
+                    } else {
+                        null
+                    },
                 )
             }
-            item {
-                Text(
-                    "Paiement du fournisseur : disponible dans une prochaine version.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                )
+            if (retours.isNotEmpty()) {
+                item { TitreSection("Retours au fournisseur") }
+                items(retours, key = { it.id }) { rf ->
+                    ListItem(
+                        headlineContent = { Text("${rf.numero} · ${rf.motif}") },
+                        supportingContent = { Text(formaterDateHeure(rf.date)) },
+                        trailingContent = { Text("−" + Montant.formater(rf.montant)) },
+                    )
+                }
+            }
+            if (peutRetourner && resteARetourner) {
+                item {
+                    OutlinedButton(onClick = vm::ouvrirRetour, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                        Text("Retourner au fournisseur")
+                    }
+                }
             }
         }
     }
+
+    if (vm.retourOuvert) {
+        RetourFournisseurDialog(retournables, vm.erreur, vm::retourner, vm::fermerRetour)
+    }
 }
 
+@Composable
+private fun RetourFournisseurDialog(
+    lignes: List<LigneReceptionRetournable>,
+    erreur: String?,
+    onValider: (saisies: Map<String, String>, motif: String) -> Unit,
+    onAnnuler: () -> Unit,
+) {
+    val saisies = remember { mutableStateMapOf<String, String>() }
+    var motif by rememberSaveable { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onAnnuler,
+        title = { Text("Retour au fournisseur") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Quantités rendues (laisser vide si aucune). Elles sortent du stock et la dette envers le fournisseur diminue.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                lignes.filter { it.ligne.quantiteMilli > it.ligne.quantiteRetourneeMilli }.forEach { l ->
+                    val reste = l.ligne.quantiteMilli - l.ligne.quantiteRetourneeMilli
+                    ChampTexte(
+                        saisies[l.ligne.id].orEmpty(),
+                        { saisies[l.ligne.id] = it },
+                        "${l.nom} (au plus ${Quantite.formater(reste)} ${l.uniteSymbole})",
+                        Modifier.fillMaxWidth(),
+                        if (l.uniteDecimale) KeyboardType.Decimal else KeyboardType.Number,
+                    )
+                }
+                ChampTexte(motif, { motif = it }, "Motif (abîmé, erreur de livraison…)", Modifier.fillMaxWidth())
+                erreur?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onValider(saisies.toMap(), motif) }) { Text("Valider le retour") } },
+        dismissButton = { TextButton(onClick = onAnnuler) { Text("Annuler") } },
+    )
+}

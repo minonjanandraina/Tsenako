@@ -122,7 +122,6 @@ private class ModuleAVenir(val nom: String, val sprint: String, val icone: @Comp
 
 /** Modules prévus dans les sprints suivants (Claude.md §6). */
 private val MODULES_A_VENIR = listOf(
-    ModuleAVenir("Charges & dépenses", "S5") { painterResource(R.drawable.ic_depenses) },
     ModuleAVenir("Comptabilité", "S6") { painterResource(R.drawable.ic_comptabilite) },
 )
 
@@ -264,6 +263,18 @@ fun HomeScreen(
                     }
                     EntreeMenu("Unités d'achat", "Carton, sac… convertis en unités de stock", painterResource(R.drawable.ic_unites)) {
                         onOuvrir(Routes.CONVERSIONS)
+                    }
+                }
+            }
+
+            if (utilisateur.peut(Permission.GERER_DEPENSES)) {
+                Text("Dépenses", style = MaterialTheme.typography.titleMedium)
+                Card(Modifier.fillMaxWidth()) {
+                    EntreeMenu("Dépenses", "Loyer, électricité, transport, salaires…", painterResource(R.drawable.ic_depenses)) {
+                        onOuvrir(Routes.DEPENSES)
+                    }
+                    EntreeMenu("Fournisseurs à payer", "Dettes, échéances et paiements", painterResource(R.drawable.ic_appro)) {
+                        onOuvrir(Routes.FOURNISSEURS)
                     }
                 }
             }

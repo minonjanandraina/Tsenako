@@ -114,7 +114,11 @@ fun List<ClientAvecCredit>.filtrer(texte: String): List<ClientAvecCredit> {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ClientsScreen(onRetour: () -> Unit, vm: ClientsViewModel = viewModel(factory = ClientsViewModel.Factory)) {
+fun ClientsScreen(
+    onRetour: () -> Unit,
+    onOuvrir: (clientId: String) -> Unit,
+    vm: ClientsViewModel = viewModel(factory = ClientsViewModel.Factory),
+) {
     val clients by vm.clients.collectAsStateWithLifecycle()
     val filtres = remember(clients, vm.recherche) { clients.filtrer(vm.recherche) }
 
@@ -161,7 +165,7 @@ fun ClientsScreen(onRetour: () -> Unit, vm: ClientsViewModel = viewModel(factory
                                 }
                             }
                         },
-                        modifier = Modifier.clickable { vm.modifier(c.client) },
+                        modifier = Modifier.clickable { onOuvrir(c.client.id) },
                     )
                 }
             }

@@ -17,6 +17,9 @@ import mg.tsena.data.db.entity.LigneCommandeAvecProduit
 import mg.tsena.data.db.entity.LigneCommandeEntity
 import mg.tsena.data.db.entity.LigneReceptionAvecProduit
 import mg.tsena.data.db.entity.LigneReceptionEntity
+import mg.tsena.data.db.entity.LigneReceptionRetournable
+import mg.tsena.data.db.entity.LigneRetourFournisseurEntity
+import mg.tsena.data.db.entity.RetourFournisseurEntity
 import mg.tsena.data.db.entity.LigneTransfertAvecProduit
 import mg.tsena.data.db.entity.LigneTransfertEntity
 import mg.tsena.data.db.entity.ProduitEntity
@@ -27,6 +30,7 @@ import mg.tsena.data.db.entity.StatutTransfert
 import mg.tsena.data.db.entity.TransfertAvecDepots
 import mg.tsena.data.db.entity.TransfertEntity
 import mg.tsena.data.db.entity.TypeMouvement
+import mg.tsena.domain.Montant
 import mg.tsena.domain.Permission
 import mg.tsena.domain.Quantite
 import mg.tsena.domain.RegleMetierException
@@ -332,6 +336,74 @@ class ApproRepository(
         }
     }
 
+    // --- Retours au fournisseur (RG-A4) ---
+
+    fun observerRetoursFournisseur(receptionId: String): Flow<List<RetourFournisseurEntity>> =
+        db.retourFournisseurDao().observerParReception(receptionId)
+
+    fun observerLignesRetournables(receptionId: String): Flow<List<LigneReceptionRetournable>> =
+        db.retourFournisseurDao().observerLignesRetournables(receptionId)
+
+    /**
+     * Retour de marchandise reçue : [quantites] par id de ligne de réception (≤ reçu − déjà retourné).
+     * Sortie de stock (RETOUR_FOURNISSEUR, au CMUP) ; la dette fournisseur diminue du prix d'achat des quantités
+     * (exact pour une ligne entière). Renvoie le montant déduit.
+     */
+    suspend fun retournerAuFournisseur(receptionId: String, quantites: Map<String, Long>, motif: String): Long {
+        val auteur = session.exiger(Permission.GERER_APPRO)
+        val texte = motif.trim().ifEmpty { throw RegleMetierException("Indiquez le motif du retour.") }
+        val retourDao = db.retourFournisseurDao()
+        return db.withTransaction {
+            val reception = receptionDao.get(receptionId) ?: throw RegleMetierException("Réception introuvable.")
+            val lignes = retourDao.lignesReception(receptionId).associateBy { it.id }
+            val retournees = quantites.filterValues { it != 0L }
+            if (retournees.isEmpty()) throw RegleMetierException("Indiquez les quantités retournées.")
+            retournees.forEach { (ligneId, q) ->
+                val l = lignes[ligneId] ?: throw RegleMetierException("Ligne de réception introuvable.")
+                val reste = l.quantiteMilli - l.quantiteRetourneeMilli
+                if (q < 0 || q > reste) {
+                    val nom = db.produitDao().get(l.produitId)?.nom.orEmpty()
+                    throw RegleMetierException("Quantité retournée invalide pour « $nom » (au plus ${Quantite.formater(reste)}).")
+                }
+            }
+            val montants = retournees.mapValues { (ligneId, q) ->
+                val l = lignes.getValue(ligneId)
+                Approvisionnement.montantAuProrata(l.montant, l.quantiteMilli, q)
+            }
+            val retour = RetourFournisseurEntity(
+                numero = Approvisionnement.numero(PREFIXE_RETOUR, retourDao.compter() + 1),
+                receptionId = reception.id,
+                fournisseurId = reception.fournisseurId,
+                depotId = reception.depotId,
+                motif = texte,
+                montant = montants.values.sum(),
+                createdBy = auteur.id,
+            )
+            retourDao.inserer(retour)
+            val document = DocumentStock(DOCUMENT_RETOUR_FOURNISSEUR, retour.id)
+            retourDao.insererLignes(
+                retournees.map { (ligneId, q) ->
+                    val l = lignes.getValue(ligneId)
+                    stock.enregistrerMouvement(
+                        l.produitId, reception.depotId, TypeMouvement.RETOUR_FOURNISSEUR, -q,
+                        document = document, motif = "${retour.numero} (${reception.numero}) : $texte", auteurId = auteur.id,
+                    )
+                    retourDao.modifierLigneReception(l.copy(quantiteRetourneeMilli = l.quantiteRetourneeMilli + q))
+                    LigneRetourFournisseurEntity(
+                        retourId = retour.id,
+                        ligneReceptionId = l.id,
+                        produitId = l.produitId,
+                        quantiteMilli = q,
+                        prixUnitaire = l.prixUnitaire,
+                        montant = montants.getValue(ligneId),
+                    )
+                }
+            )
+            audit.enregistrer(ActionAudit.RETOUR_FOURNISSEUR, "${retour.numero} (${reception.numero}) : ${Montant.formater(retour.montant)}")
+            retour.montant
+        }
+    }
+
     // --- Transferts inter-dépôts (RG-T1 à RG-T4) ---
 
     fun observerTransferts(): Flow<List<TransfertAvecDepots>> = transfertDao.observerTous()
@@ -496,6 +568,8 @@ class ApproRepository(
     companion object {
         const val DOCUMENT_RECEPTION = "RECEPTION"
         const val DOCUMENT_TRANSFERT = "TRANSFERT"
+        const val DOCUMENT_RETOUR_FOURNISSEUR = "RETOUR_FOURNISSEUR"
+        private const val PREFIXE_RETOUR = "RF"
         private const val PREFIXE_COMMANDE = "CF"
         private const val PREFIXE_RECEPTION = "BR"
         private const val PREFIXE_TRANSFERT = "TR"

@@ -23,7 +23,12 @@ import mg.tsena.ui.appro.CommandeFormScreen
 import mg.tsena.ui.appro.CommandeScreen
 import mg.tsena.ui.appro.CommandesScreen
 import mg.tsena.ui.appro.ConversionsScreen
+import mg.tsena.ui.appro.FournisseurScreen
 import mg.tsena.ui.appro.FournisseursScreen
+import mg.tsena.ui.finance.CategoriesDepenseScreen
+import mg.tsena.ui.finance.DepenseFormScreen
+import mg.tsena.ui.finance.DepensesScreen
+import mg.tsena.ui.vente.ClientScreen
 import mg.tsena.ui.appro.ReceptionFormScreen
 import mg.tsena.ui.appro.ReceptionScreen
 import mg.tsena.ui.appro.ReceptionsScreen
@@ -81,6 +86,11 @@ object Routes {
     const val VENTE_DETAIL = "ventes/{id}"
     const val CLIENTS = "clients"
     const val PRIX_POINTS_VENTE = "prix-points-vente"
+    const val FOURNISSEUR = "fournisseurs/{id}"
+    const val CLIENT = "clients/{id}"
+    const val DEPENSES = "depenses"
+    const val DEPENSE_FORM = "depense-saisie"
+    const val CATEGORIES_DEPENSES = "depenses/categories"
 
     fun produit(id: String?) = if (id == null) "produit" else "produit?id=$id"
     fun ficheStock(produitId: String, depotId: String) = "stocks/fiche/$produitId/$depotId"
@@ -92,6 +102,8 @@ object Routes {
     fun transfert(id: String) = "transferts/$id"
     fun vente(pointVenteId: String) = "caisse/vente/$pointVenteId"
     fun venteDetail(id: String) = "ventes/$id"
+    fun fournisseur(id: String) = "fournisseurs/$id"
+    fun client(id: String) = "clients/$id"
 }
 
 private val TYPES_SAUVEGARDE = arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")
@@ -189,7 +201,17 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
         composable(Routes.INVENTAIRE) { entree ->
             InventaireScreen(inventaireId = entree.arguments?.getString("id").orEmpty(), onRetour = { nav.popBackStack() })
         }
-        composable(Routes.FOURNISSEURS) { FournisseursScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.FOURNISSEURS) {
+            FournisseursScreen(onRetour = { nav.popBackStack() }, onOuvrir = { id -> nav.navigate(Routes.fournisseur(id)) })
+        }
+        composable(Routes.FOURNISSEUR) { entree ->
+            FournisseurScreen(
+                fournisseurId = entree.arguments?.getString("id").orEmpty(),
+                peutPayer = etat.utilisateur.peut(Permission.GERER_DEPENSES),
+                onRetour = { nav.popBackStack() },
+                onReception = { id -> nav.navigate(Routes.reception(id)) },
+            )
+        }
         composable(Routes.CONVERSIONS) { ConversionsScreen(onRetour = { nav.popBackStack() }) }
         composable(Routes.COMMANDES) {
             CommandesScreen(
@@ -245,7 +267,11 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
             )
         }
         composable(Routes.RECEPTION) { entree ->
-            ReceptionScreen(receptionId = entree.arguments?.getString("id").orEmpty(), onRetour = { nav.popBackStack() })
+            ReceptionScreen(
+                receptionId = entree.arguments?.getString("id").orEmpty(),
+                peutRetourner = etat.utilisateur.peut(Permission.GERER_APPRO),
+                onRetour = { nav.popBackStack() },
+            )
         }
         composable(Routes.TRANSFERTS) {
             TransfertsScreen(
@@ -293,7 +319,27 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
                 onRetour = { nav.popBackStack() },
             )
         }
-        composable(Routes.CLIENTS) { ClientsScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.CLIENTS) {
+            ClientsScreen(onRetour = { nav.popBackStack() }, onOuvrir = { id -> nav.navigate(Routes.client(id)) })
+        }
+        composable(Routes.CLIENT) { entree ->
+            ClientScreen(
+                clientId = entree.arguments?.getString("id").orEmpty(),
+                peutEncaisser = etat.utilisateur.peut(Permission.GERER_CAISSE),
+                onRetour = { nav.popBackStack() },
+                onVente = { id -> nav.navigate(Routes.venteDetail(id)) },
+            )
+        }
+        composable(Routes.DEPENSES) {
+            DepensesScreen(
+                peutParametrer = etat.utilisateur.peut(Permission.PARAMETRER_COMMERCE),
+                onRetour = { nav.popBackStack() },
+                onNouvelle = { nav.navigate(Routes.DEPENSE_FORM) },
+                onCategories = { nav.navigate(Routes.CATEGORIES_DEPENSES) },
+            )
+        }
+        composable(Routes.DEPENSE_FORM) { DepenseFormScreen(onTermine = { nav.popBackStack() }) }
+        composable(Routes.CATEGORIES_DEPENSES) { CategoriesDepenseScreen(onRetour = { nav.popBackStack() }) }
         composable(Routes.PRIX_POINTS_VENTE) { PrixPointVenteScreen(onRetour = { nav.popBackStack() }) }
         composable(Routes.TRANSFERT) { entree ->
             TransfertScreen(transfertId = entree.arguments?.getString("id").orEmpty(), onRetour = { nav.popBackStack() })

@@ -28,7 +28,9 @@ interface FournisseurDao {
         """
         SELECT f.*,
                COALESCE((SELECT SUM(r.montant_total) FROM reception r WHERE r.fournisseur_id = f.id AND r.deleted_at IS NULL), 0) AS total_achats,
-               (SELECT COUNT(*) FROM reception r WHERE r.fournisseur_id = f.id AND r.deleted_at IS NULL) AS nb_receptions
+               (SELECT COUNT(*) FROM reception r WHERE r.fournisseur_id = f.id AND r.deleted_at IS NULL) AS nb_receptions,
+               COALESCE((SELECT SUM(rf.montant) FROM retour_fournisseur rf WHERE rf.fournisseur_id = f.id), 0) AS total_retours,
+               COALESCE((SELECT SUM(p.montant) FROM paiement_fournisseur p WHERE p.fournisseur_id = f.id), 0) AS total_paye
         FROM fournisseur f
         WHERE f.deleted_at IS NULL
         ORDER BY f.actif DESC, f.nom COLLATE NOCASE
@@ -214,6 +216,9 @@ interface ReceptionDao {
         """
     )
     fun observerLignes(receptionId: String): Flow<List<LigneReceptionAvecProduit>>
+
+    @Query("SELECT * FROM reception WHERE id = :id AND deleted_at IS NULL")
+    suspend fun get(id: String): ReceptionEntity?
 
     @Query("SELECT COUNT(*) FROM reception WHERE commande_id = :commandeId AND deleted_at IS NULL")
     suspend fun compterParCommande(commandeId: String): Int

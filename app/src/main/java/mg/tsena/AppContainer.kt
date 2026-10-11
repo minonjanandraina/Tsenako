@@ -12,6 +12,7 @@ import mg.tsena.backup.BackupManager
 import mg.tsena.catalogue.CatalogueRepository
 import mg.tsena.catalogue.PhotoManager
 import mg.tsena.data.db.TsenaDatabase
+import mg.tsena.finance.FinanceRepository
 import mg.tsena.lieux.LieuRepository
 import mg.tsena.stock.StockRepository
 import mg.tsena.vente.VenteRepository
@@ -29,6 +30,7 @@ class AppContainer(context: Context) {
     val stockRepository = StockRepository(database, session, audit)
     val approRepository = ApproRepository(database, session, audit, stockRepository)
     val venteRepository = VenteRepository(database, session, audit, authRepository, stockRepository)
+    val financeRepository = FinanceRepository(database, session, audit)
 }
 
 class TsenaApp : Application() {

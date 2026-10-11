@@ -1,0 +1,312 @@
+package mg.tsena.finance
+
+import androidx.room.withTransaction
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import mg.tsena.auth.ActionAudit
+import mg.tsena.auth.AuditLogger
+import mg.tsena.auth.SessionManager
+import mg.tsena.data.db.TsenaDatabase
+import mg.tsena.data.db.entity.CategorieDepenseEntity
+import mg.tsena.data.db.entity.DepenseAvecDetails
+import mg.tsena.data.db.entity.DepenseEntity
+import mg.tsena.data.db.entity.EncaissementClientEntity
+import mg.tsena.data.db.entity.ModePaiement
+import mg.tsena.data.db.entity.OperationCaisseEntity
+import mg.tsena.data.db.entity.PaiementFournisseurEntity
+import mg.tsena.data.db.entity.ReceptionAPayer
+import mg.tsena.data.db.entity.SessionAvecDetails
+import mg.tsena.data.db.entity.StatutDepense
+import mg.tsena.data.db.entity.StatutSession
+import mg.tsena.data.db.entity.TotalCategorie
+import mg.tsena.data.db.entity.TypeOperationCaisse
+import mg.tsena.data.db.entity.VenteAvecDetails
+import mg.tsena.domain.Montant
+import mg.tsena.domain.Permission
+import mg.tsena.domain.RegleMetierException
+import mg.tsena.domain.maintenant
+import mg.tsena.vente.CalculsVente
+import java.time.YearMonth
+
+/** Modes de règlement des sorties et rentrées d'argent hors vente. */
+val MODES_REGLEMENT = listOf(ModePaiement.ESPECES, ModePaiement.MOBILE_MONEY, ModePaiement.BANQUE)
+
+/** Charges et dépenses (RG-D1 à RG-D3), paiements fournisseurs (RG-A3) et remboursements des crédits clients. */
+class FinanceRepository(
+    private val db: TsenaDatabase,
+    private val session: SessionManager,
+    private val audit: AuditLogger,
+) {
+    private val categorieDao = db.categorieDepenseDao()
+    private val depenseDao = db.depenseDao()
+    private val paiementDao = db.paiementFournisseurDao()
+    private val encaissementDao = db.encaissementClientDao()
+    private val caisseDao = db.caisseDao()
+
+    /** Caisses ouvertes des points de vente visibles par l'utilisateur (RG-X2). */
+    fun observerCaissesOuvertes(): Flow<List<SessionAvecDetails>> =
+        caisseDao.observerSessionsOuvertes().map { liste ->
+            val u = session.utilisateur.value
+            liste.filter { u != null && u.voitPointVente(it.pointVenteId) }
+        }
+
+    // --- Catégories de dépenses (RG-D1) ---
+
+    fun observerCategories(): Flow<List<CategorieDepenseEntity>> = categorieDao.observer()
+
+    suspend fun enregistrerCategorie(id: String?, nom: String, compteNumero: String, actif: Boolean) {
+        val auteur = session.exiger(Permission.GERER_DEPENSES)
+        val nomPropre = nom.trim()
+        val compte = compteNumero.trim()
+        if (nomPropre.isEmpty()) throw RegleMetierException("Le nom de la catégorie est obligatoire.")
+        if (!compte.startsWith("6") || compte.length < 2 || !compte.all { it.isDigit() }) {
+            throw RegleMetierException("Le compte doit être un compte de charge de la classe 6 (ex. 613).")
+        }
+        db.withTransaction {
+            if (categorieDao.compterParNom(nomPropre, id ?: "") > 0) throw RegleMetierException("La catégorie « $nomPropre » existe déjà.")
+            if (id == null) {
+                categorieDao.inserer(CategorieDepenseEntity(nom = nomPropre, compteNumero = compte, createdBy = auteur.id))
+            } else {
+                val existante = categorieDao.get(id) ?: throw RegleMetierException("Catégorie introuvable.")
+                categorieDao.modifier(existante.copy(nom = nomPropre, compteNumero = compte, actif = actif, updatedAt = maintenant()))
+            }
+            audit.enregistrer(ActionAudit.CATEGORIE_DEPENSE, "$nomPropre ($compte)")
+        }
+    }
+
+    // --- Dépenses (RG-D2, RG-D3) ---
+
+    fun observerDepenses(mois: YearMonth): Flow<List<DepenseAvecDetails>> {
+        val (debut, fin) = Echeances.bornesMois(mois)
+        return depenseDao.observerPeriode(debut, fin)
+    }
+
+    fun observerTotauxDepenses(mois: YearMonth): Flow<List<TotalCategorie>> {
+        val (debut, fin) = Echeances.bornesMois(mois)
+        return depenseDao.observerTotaux(debut, fin)
+    }
+
+    suspend fun seuilJustificatif(): Long = db.commerceDao().get()?.seuilJustificatif ?: 0
+
+    /** RG-D3 : propriétaire uniquement. */
+    suspend fun definirSeuilJustificatif(seuil: Long) {
+        session.exiger(Permission.PARAMETRER_COMMERCE)
+        if (seuil < 0) throw RegleMetierException("Le seuil ne peut pas être négatif.")
+        db.commerceDao().modifierSeuilJustificatif(seuil, maintenant())
+        audit.enregistrer(ActionAudit.PARAMETRE_JUSTIFICATIF, Montant.formater(seuil))
+    }
+
+    /**
+     * Enregistre une dépense. Espèces / mobile money : décaissement dans la caisse ouverte de [pointVenteId] (RG-D2) ;
+     * banque / hors caisse : aucune opération de caisse. Justificatif obligatoire au-delà du seuil (RG-D3).
+     * L'écriture comptable (6x / 53) viendra au sprint S6.
+     */
+    suspend fun enregistrerDepense(
+        categorieId: String,
+        montant: Long,
+        description: String,
+        mode: ModePaiement,
+        pointVenteId: String?,
+        justificatif: String?,
+    ): String {
+        val auteur = session.exiger(Permission.GERER_DEPENSES)
+        if (montant <= 0) throw RegleMetierException("Le montant doit être supérieur à zéro.")
+        val texte = description.trim().ifEmpty { throw RegleMetierException("Décrivez la dépense.") }
+        return db.withTransaction {
+            val categorie = categorieDao.get(categorieId) ?: throw RegleMetierException("Choisissez une catégorie.")
+            if (!categorie.actif) throw RegleMetierException("La catégorie « ${categorie.nom} » est désactivée.")
+            val seuil = db.commerceDao().get()?.seuilJustificatif ?: 0
+            if (justificatif == null && montant > seuil) {
+                throw RegleMetierException("Au-delà de ${Montant.formater(seuil)}, la photo du justificatif est obligatoire.")
+            }
+            val depense = DepenseEntity(
+                numero = numero(PREFIXE_DEPENSE, depenseDao.compter() + 1),
+                categorieId = categorie.id,
+                pointVenteId = pointVenteId,
+                montant = montant,
+                modePaiement = mode,
+                justificatifChemin = justificatif,
+                description = texte,
+                createdBy = auteur.id,
+            )
+            val sessionId = mouvementCaisse(
+                pointVenteId, mode, TypeOperationCaisse.DECAISSEMENT, montant,
+                DOCUMENT_DEPENSE, depense.id, "Dépense ${depense.numero} : ${categorie.nom}", auteur.id,
+            )
+            depenseDao.inserer(depense.copy(sessionCaisseId = sessionId))
+            audit.enregistrer(ActionAudit.DEPENSE, "${depense.numero} : ${categorie.nom}, ${Montant.formater(montant)}")
+            depense.id
+        }
+    }
+
+    /** Annulation : l'argent revient dans la même caisse si elle est encore ouverte ; hors caisse, toujours possible. */
+    suspend fun annulerDepense(id: String, motif: String) {
+        val auteur = session.exiger(Permission.GERER_DEPENSES)
+        val texte = motif.trim().ifEmpty { throw RegleMetierException("Indiquez le motif de l'annulation.") }
+        db.withTransaction {
+            val depense = depenseDao.get(id) ?: throw RegleMetierException("Dépense introuvable.")
+            if (depense.statut == StatutDepense.ANNULEE) throw RegleMetierException("Cette dépense est déjà annulée.")
+            depense.sessionCaisseId?.let { sessionId ->
+                val s = caisseDao.getSession(sessionId)
+                if (s?.statut != StatutSession.OUVERTE) {
+                    throw RegleMetierException("La caisse de cette dépense est clôturée : elle ne peut plus être annulée.")
+                }
+                caisseDao.insererOperation(
+                    OperationCaisseEntity(
+                        sessionId = sessionId,
+                        type = TypeOperationCaisse.ENCAISSEMENT,
+                        mode = depense.modePaiement,
+                        montant = depense.montant,
+                        documentType = DOCUMENT_DEPENSE,
+                        documentId = depense.id,
+                        libelle = "Annulation dépense ${depense.numero}",
+                        createdBy = auteur.id,
+                    )
+                )
+            }
+            val date = maintenant()
+            depenseDao.modifier(
+                depense.copy(statut = StatutDepense.ANNULEE, dateAnnulation = date, annuleePar = auteur.id, motifAnnulation = texte, updatedAt = date)
+            )
+            audit.enregistrer(ActionAudit.ANNULATION_DEPENSE, "${depense.numero} : $texte")
+        }
+    }
+
+    // --- Paiements fournisseurs (RG-A3) ---
+
+    fun observerPaiementsFournisseur(fournisseurId: String): Flow<List<PaiementFournisseurEntity>> =
+        paiementDao.observerParFournisseur(fournisseurId)
+
+    fun observerReceptionsAPayer(fournisseurId: String): Flow<List<ReceptionAPayer>> = paiementDao.observerReceptions(fournisseurId)
+
+    fun observerReceptionAPayer(receptionId: String): Flow<ReceptionAPayer?> = paiementDao.observerReception(receptionId)
+
+    /**
+     * Paiement d'un fournisseur : rattaché à [receptionId] (au plus son reste à payer) ou en acompte général
+     * (au plus le solde dû). Espèces / mobile money : décaissement dans la caisse ouverte de [pointVenteId].
+     */
+    suspend fun payerFournisseur(
+        fournisseurId: String,
+        receptionId: String?,
+        montant: Long,
+        mode: ModePaiement,
+        pointVenteId: String?,
+        reference: String,
+    ) {
+        val auteur = session.exiger(Permission.GERER_DEPENSES)
+        if (montant <= 0) throw RegleMetierException("Le montant doit être supérieur à zéro.")
+        db.withTransaction {
+            val fournisseur = db.fournisseurDao().get(fournisseurId) ?: throw RegleMetierException("Fournisseur introuvable.")
+            val solde = paiementDao.solde(fournisseurId)
+            if (montant > solde) throw RegleMetierException("Le solde dû à ${fournisseur.nom} n'est que de ${Montant.formater(solde)}.")
+            if (receptionId != null) {
+                val r = paiementDao.reception(receptionId) ?: throw RegleMetierException("Réception introuvable.")
+                if (r.reception.fournisseurId != fournisseurId) throw RegleMetierException("Cette réception est d'un autre fournisseur.")
+                if (montant > r.reste) {
+                    throw RegleMetierException("Il ne reste que ${Montant.formater(r.reste)} à payer sur ${r.reception.numero}.")
+                }
+            }
+            val paiement = PaiementFournisseurEntity(
+                numero = numero(PREFIXE_PAIEMENT, paiementDao.compter() + 1),
+                fournisseurId = fournisseurId,
+                receptionId = receptionId,
+                montant = montant,
+                modePaiement = mode,
+                reference = reference.trim().ifEmpty { null },
+                createdBy = auteur.id,
+            )
+            val sessionId = mouvementCaisse(
+                pointVenteId, mode, TypeOperationCaisse.DECAISSEMENT, montant,
+                DOCUMENT_PAIEMENT_FOURNISSEUR, paiement.id, "Paiement ${fournisseur.nom} (${paiement.numero})", auteur.id,
+            )
+            paiementDao.inserer(paiement.copy(sessionCaisseId = sessionId))
+            audit.enregistrer(ActionAudit.PAIEMENT_FOURNISSEUR, "${paiement.numero} : ${fournisseur.nom}, ${Montant.formater(montant)}")
+        }
+    }
+
+    // --- Remboursements des crédits clients ---
+
+    fun observerEncaissementsClient(clientId: String): Flow<List<EncaissementClientEntity>> = encaissementDao.observerParClient(clientId)
+
+    fun observerVentesClient(clientId: String): Flow<List<VenteAvecDetails>> = db.venteDao().observerVentesClient(clientId)
+
+    /** Le client rembourse tout ou partie de son crédit (au plus le crédit dû). */
+    suspend fun encaisserClient(clientId: String, montant: Long, mode: ModePaiement, pointVenteId: String?, reference: String) {
+        val auteur = session.exiger(Permission.GERER_CAISSE)
+        if (montant <= 0) throw RegleMetierException("Le montant doit être supérieur à zéro.")
+        db.withTransaction {
+            val client = db.clientDao().get(clientId) ?: throw RegleMetierException("Client introuvable.")
+            val du = encaissementDao.creditDu(clientId)
+            if (montant > du) throw RegleMetierException("${client.nom} ne doit que ${Montant.formater(du)}.")
+            val encaissement = EncaissementClientEntity(
+                numero = numero(PREFIXE_ENCAISSEMENT, encaissementDao.compter() + 1),
+                clientId = clientId,
+                montant = montant,
+                modePaiement = mode,
+                reference = reference.trim().ifEmpty { null },
+                createdBy = auteur.id,
+            )
+            val sessionId = mouvementCaisse(
+                pointVenteId, mode, TypeOperationCaisse.ENCAISSEMENT, montant,
+                DOCUMENT_ENCAISSEMENT, encaissement.id, "Remboursement ${client.nom} (${encaissement.numero})", auteur.id,
+            )
+            encaissementDao.inserer(encaissement.copy(sessionCaisseId = sessionId))
+            audit.enregistrer(ActionAudit.ENCAISSEMENT_CLIENT, "${encaissement.numero} : ${client.nom}, ${Montant.formater(montant)}")
+        }
+    }
+
+    /**
+     * Opération dans la caisse ouverte de [pointVenteId] pour un règlement en espèces ou mobile money ;
+     * aucune pour la banque / hors caisse. Une sortie d'espèces ne peut pas dépasser les espèces en caisse.
+     * Renvoie l'id de la session utilisée.
+     */
+    private suspend fun mouvementCaisse(
+        pointVenteId: String?,
+        mode: ModePaiement,
+        type: TypeOperationCaisse,
+        montant: Long,
+        documentType: String,
+        documentId: String,
+        libelle: String,
+        auteurId: String,
+    ): String? {
+        if (mode !in MODES_REGLEMENT) throw RegleMetierException("Mode de règlement non accepté : ${mode.libelle}.")
+        if (mode == ModePaiement.BANQUE) return null
+        val pv = pointVenteId?.let { db.lieuDao().getPointVente(it) } ?: throw RegleMetierException("Choisissez la caisse utilisée.")
+        val u = session.utilisateur.value ?: throw RegleMetierException("Aucun utilisateur connecté.")
+        if (!u.voitPointVente(pv.id)) throw RegleMetierException("Vous n'êtes pas rattaché au point de vente « ${pv.nom} ».")
+        val sessionCaisse = caisseDao.getParPointVente(pv.id)?.let { caisseDao.getSessionOuverte(it.id) }
+            ?: throw RegleMetierException("La caisse de « ${pv.nom} » est fermée.")
+        if (mode == ModePaiement.ESPECES && !type.entree) {
+            val especes = CalculsVente.soldeTheorique(
+                sessionCaisse.fondInitial,
+                caisseDao.operations(sessionCaisse.id).filter { it.mode == ModePaiement.ESPECES }.map { it.type to it.montant },
+            )
+            if (montant > especes) throw RegleMetierException("Il n'y a que ${Montant.formater(especes)} en espèces dans la caisse.")
+        }
+        caisseDao.insererOperation(
+            OperationCaisseEntity(
+                sessionId = sessionCaisse.id,
+                type = type,
+                mode = mode,
+                montant = montant,
+                documentType = documentType,
+                documentId = documentId,
+                libelle = libelle,
+                createdBy = auteurId,
+            )
+        )
+        return sessionCaisse.id
+    }
+
+    private fun numero(prefixe: String, rang: Int) = "$prefixe-" + rang.toString().padStart(6, '0')
+
+    companion object {
+        const val DOCUMENT_DEPENSE = "DEPENSE"
+        const val DOCUMENT_PAIEMENT_FOURNISSEUR = "PAIEMENT_FOURNISSEUR"
+        const val DOCUMENT_ENCAISSEMENT = "ENCAISSEMENT_CLIENT"
+        private const val PREFIXE_DEPENSE = "DP"
+        private const val PREFIXE_PAIEMENT = "PF"
+        private const val PREFIXE_ENCAISSEMENT = "EC"
+    }
+}

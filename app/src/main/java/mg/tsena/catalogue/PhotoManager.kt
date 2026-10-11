@@ -16,7 +16,7 @@ import java.io.InputStream
 class PhotoInvalideException(message: String) : Exception(message)
 
 /**
- * Photos des produits (RG-P2) : redimensionnées, redressées selon l'EXIF et compressées en JPEG,
+ * Photos des produits (RG-P2) et justificatifs de dépenses (RG-D3) : redimensionnées, redressées selon l'EXIF et compressées en JPEG,
  * dans files/photos/produits/. Le dossier photos est inclus dans la sauvegarde.
  */
 class PhotoManager(private val context: Context) {
@@ -31,8 +31,8 @@ class PhotoManager(private val context: Context) {
         return FileProvider.getUriForFile(context, "${context.packageName}.fichiers", fichier)
     }
 
-    /** Importe une image (galerie ou appareil photo) et renvoie son chemin relatif. */
-    suspend fun importer(source: Uri): String = withContext(Dispatchers.IO) {
+    /** Importe une image (galerie ou appareil photo) dans [dossier] et renvoie son chemin relatif. */
+    suspend fun importer(source: Uri, dossier: String = DOSSIER_PRODUITS): String = withContext(Dispatchers.IO) {
         val bornes = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         ouvrir(source).use { BitmapFactory.decodeStream(it, null, bornes) }
         if (bornes.outWidth <= 0 || bornes.outHeight <= 0) throw PhotoInvalideException("Image illisible.")
@@ -45,7 +45,7 @@ class PhotoManager(private val context: Context) {
         val rotation = ouvrir(source).use { ExifInterface(it).rotationDegrees }
 
         val finale = redimensionner(image, rotation)
-        val relatif = "$DOSSIER_PRODUITS/${nouvelId()}.jpg"
+        val relatif = "$dossier/${nouvelId()}.jpg"
         val cible = File(racine, relatif).apply { parentFile?.mkdirs() }
         cible.outputStream().use { finale.compress(Bitmap.CompressFormat.JPEG, QUALITE_JPEG, it) }
         if (finale !== image) finale.recycle()
@@ -80,6 +80,8 @@ class PhotoManager(private val context: Context) {
         private const val TAILLE_MAX = 1024
         private const val QUALITE_JPEG = 80
         private const val DOSSIER_PRODUITS = "produits"
+        /** Justificatifs de dépenses (RG-D3) */
+        const val DOSSIER_JUSTIFICATIFS = "justificatifs"
 
         fun dossierPhotos(context: Context): File = File(context.filesDir, "photos")
     }

@@ -28,6 +28,9 @@ interface CommerceDao {
 
     @Query("UPDATE commerce SET remise_max_pourcent = :pourcent, updated_at = :date WHERE deleted_at IS NULL")
     suspend fun modifierRemiseMax(pourcent: Int, date: Long)
+
+    @Query("UPDATE commerce SET seuil_justificatif = :seuil, updated_at = :date WHERE deleted_at IS NULL")
+    suspend fun modifierSeuilJustificatif(seuil: Long, date: Long)
 }
 
 @Dao
