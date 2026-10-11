@@ -122,6 +122,8 @@ data class StockProduit(
     val nom: String,
     @ColumnInfo(name = "photo_chemin") val photoChemin: String,
     @ColumnInfo(name = "seuil_alerte_milli") val seuilAlerteMilli: Long,
+    /** Prix d'achat habituel de la fiche produit, s'il est renseigné */
+    @ColumnInfo(name = "prix_achat") val prixAchat: Long?,
     @ColumnInfo(name = "unite_symbole") val uniteSymbole: String,
     @ColumnInfo(name = "unite_decimale") val uniteDecimale: Boolean,
     @ColumnInfo(name = "quantite_milli") val quantiteMilli: Long,

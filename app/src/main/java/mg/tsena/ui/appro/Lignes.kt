@@ -57,13 +57,15 @@ data class LigneSaisie(
     val montant: Long = 0,
     /** Saisie d'origine en unité d'achat, ex. « 2 ctn × 12 000 Ar » */
     val detail: String? = null,
+    /** Prix d'achat de la fiche produit, proposé pour une nouvelle ligne */
+    val prixAchat: Long? = null,
 ) {
     fun versAchat() = LigneAchat(produitId, quantiteMilli, montant)
     fun versEnvoi() = LigneEnvoi(produitId, quantiteMilli)
 
     companion object {
         fun depuis(p: StockProduit) =
-            LigneSaisie(p.produitId, p.code, p.nom, p.photoChemin, p.uniteSymbole, p.uniteDecimale)
+            LigneSaisie(p.produitId, p.code, p.nom, p.photoChemin, p.uniteSymbole, p.uniteDecimale, prixAchat = p.prixAchat)
 
         fun depuis(l: LigneCommandeAvecProduit, quantiteMilli: Long, montant: Long) =
             LigneSaisie(l.ligne.produitId, l.code, l.nom, l.photoChemin, l.uniteSymbole, l.uniteDecimale, quantiteMilli, montant)
@@ -173,7 +175,9 @@ fun LigneDialog(
         mutableStateOf(if (nouvelle) "" else Quantite.formater(ligne.quantiteMilli))
     }
     var prix by rememberSaveable(ligne.produitId) {
-        mutableStateOf(if (nouvelle) "" else Approvisionnement.prixUnitaire(ligne.montant, ligne.quantiteMilli).toString())
+        mutableStateOf(
+            if (nouvelle) ligne.prixAchat?.toString().orEmpty() else Approvisionnement.prixUnitaire(ligne.montant, ligne.quantiteMilli).toString()
+        )
     }
     var erreur by remember { mutableStateOf<String?>(null) }
 
@@ -225,7 +229,15 @@ fun LigneDialog(
                         valeurAffichee = conversion?.let { libelleConversion(it) } ?: ligne.uniteSymbole,
                         options = options,
                         texte = { it?.let(::libelleConversion) ?: ligne.uniteSymbole },
-                        onSelection = { conversionId = it?.conversion?.id },
+                        onSelection = { choix ->
+                            // Prix d'achat de la fiche encore proposé : converti pour l'unité choisie
+                            val base = ligne.prixAchat
+                            val actuel = conversion?.let { c -> base?.let { prixPourUnite(it, c.conversion.facteurMilli) } } ?: base
+                            if (nouvelle && base != null && prix == actuel?.toString()) {
+                                prix = (choix?.let { prixPourUnite(base, it.conversion.facteurMilli) } ?: base).toString()
+                            }
+                            conversionId = choix?.conversion?.id
+                        },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -297,3 +309,6 @@ fun LigneInfo(libelle: String, valeur: String) {
         Text(valeur, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(2f))
     }
 }
+
+/** Prix d'une unité d'achat contenant [facteurMilli] millièmes d'unité de stock, arrondi à l'Ariary. */
+private fun prixPourUnite(prixUnitaire: Long, facteurMilli: Long): Long = Valorisation.valeur(facteurMilli, prixUnitaire)

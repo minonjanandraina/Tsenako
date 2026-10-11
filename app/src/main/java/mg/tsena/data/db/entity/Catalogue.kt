@@ -58,6 +58,11 @@ data class ProduitEntity(
     val nom: String,
     @ColumnInfo(name = "type_produit_id") val typeProduitId: String,
     @ColumnInfo(name = "unite_id") val uniteId: String,
+    /**
+     * Prix d'achat habituel, Ariary (facultatif) : proposé à la saisie des commandes, réceptions et du stock initial.
+     * Le coût réel du stock reste le CMUP (RG-S2).
+     */
+    @ColumnInfo(name = "prix_achat") val prixAchat: Long? = null,
     /** Prix au détail, Ariary */
     @ColumnInfo(name = "prix_vente") val prixVente: Long,
     /** Prix en gros, Ariary ; null = produit non vendu en gros (RG-P9) */

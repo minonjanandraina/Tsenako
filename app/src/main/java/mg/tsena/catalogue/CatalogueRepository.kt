@@ -22,6 +22,7 @@ data class SaisieProduit(
     val codeBarre: String,
     val categorieId: String?,
     val uniteId: String?,
+    val prixAchat: Long?,
     val prixVente: Long,
     val prixVenteGros: Long?,
     val seuilAlerteMilli: Long,
@@ -122,6 +123,7 @@ class CatalogueRepository(
         val photo = saisie.photoChemin?.takeIf { it.isNotBlank() && photos.fichier(it).exists() }
             ?: throw RegleMetierException("La photo du produit est obligatoire.")
         if (saisie.prixVente < 0) throw RegleMetierException("Le prix de vente ne peut pas être négatif.")
+        if (saisie.prixAchat != null && saisie.prixAchat < 0) throw RegleMetierException("Le prix d'achat ne peut pas être négatif.")
         if (saisie.prixVenteGros != null && saisie.prixVenteGros < 0) {
             throw RegleMetierException("Le prix de vente en gros ne peut pas être négatif.")
         }
@@ -147,6 +149,7 @@ class CatalogueRepository(
                     nom = nom,
                     typeProduitId = categorieId,
                     uniteId = uniteId,
+                    prixAchat = saisie.prixAchat,
                     prixVente = saisie.prixVente,
                     prixVenteGros = saisie.prixVenteGros,
                     seuilAlerteMilli = saisie.seuilAlerteMilli,
@@ -165,6 +168,7 @@ class CatalogueRepository(
                         nom = nom,
                         typeProduitId = categorieId,
                         uniteId = uniteId,
+                        prixAchat = saisie.prixAchat,
                         prixVente = saisie.prixVente,
                         prixVenteGros = saisie.prixVenteGros,
                         seuilAlerteMilli = saisie.seuilAlerteMilli,

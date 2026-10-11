@@ -20,7 +20,7 @@ import mg.tsena.rapports.EtatStockLigne
 interface StockDao {
     @Query(
         """
-        SELECT p.id AS produit_id, p.code, p.nom, p.photo_chemin, p.seuil_alerte_milli,
+        SELECT p.id AS produit_id, p.code, p.nom, p.photo_chemin, p.seuil_alerte_milli, p.prix_achat,
                u.symbole AS unite_symbole, u.decimale AS unite_decimale,
                COALESCE(s.quantite_milli, 0) AS quantite_milli,
                COALESCE(s.cout_moyen_unitaire, 0) AS cout_moyen_unitaire
@@ -35,7 +35,7 @@ interface StockDao {
 
     @Query(
         """
-        SELECT p.id AS produit_id, p.code, p.nom, p.photo_chemin, p.seuil_alerte_milli,
+        SELECT p.id AS produit_id, p.code, p.nom, p.photo_chemin, p.seuil_alerte_milli, p.prix_achat,
                u.symbole AS unite_symbole, u.decimale AS unite_decimale,
                COALESCE(s.quantite_milli, 0) AS quantite_milli,
                COALESCE(s.cout_moyen_unitaire, 0) AS cout_moyen_unitaire

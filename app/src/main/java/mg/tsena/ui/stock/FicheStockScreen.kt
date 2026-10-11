@@ -241,7 +241,10 @@ private fun OperationDialog(
     onAnnuler: () -> Unit,
 ) {
     var quantite by rememberSaveable { mutableStateOf("") }
-    var cout by rememberSaveable { mutableStateOf(if (produit.coutMoyenUnitaire > 0) produit.coutMoyenUnitaire.toString() else "") }
+    // Proposé : le coût moyen actuel, sinon le prix d'achat de la fiche produit
+    var cout by rememberSaveable {
+        mutableStateOf(produit.coutMoyenUnitaire.takeIf { it > 0 }?.toString() ?: produit.prixAchat?.toString().orEmpty())
+    }
     var motif by rememberSaveable { mutableStateOf("") }
     val typeClavier = if (produit.uniteDecimale) KeyboardType.Decimal else KeyboardType.Number
 

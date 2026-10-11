@@ -61,7 +61,7 @@ exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jama
 - **type_produit** : nom, parent_id (hiérarchie de catégories)
 - **unite** : nom, symbole, decimale (pièce, kg, litre, sac, carton… pré-remplies à la création de la base)
 - **produit** : code (unique, auto `P00001`), code_barre (unique, facultatif), nom, type_produit_id (**obligatoire**),
-  unite_id, prix_vente (Ar, détail), prix_vente_gros (Ar, facultatif), seuil_alerte_milli, photo_chemin (**obligatoire**, relatif au dossier photos), actif
+  unite_id, prix_achat (Ar, facultatif), prix_vente (Ar, détail), prix_vente_gros (Ar, facultatif), seuil_alerte_milli, photo_chemin (**obligatoire**, relatif au dossier photos), actif
 - **conversion_unite** (unité d'achat) : produit_id, unite_source_id, facteur_milli (millièmes de l'unité du produit
   dans 1 unité source, ex. 1 carton = 24 pièces → 24000) ; l'unité cible est toujours celle du produit
 
@@ -145,6 +145,9 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 - RG-P7 : Catégories hiérarchiques : nom unique au même niveau ; une catégorie ne peut pas être placée
   dans elle-même ou dans une de ses sous-catégories.
 - RG-P8 : Une quantité décimale n'est acceptée que si l'unité l'autorise (kg, litre…).
+- RG-P10 : Le **prix d'achat** est facultatif : c'est un prix habituel de référence, proposé à la saisie des commandes,
+  réceptions (converti si l'on saisit en carton, sac…) et du stock initial, et affiché avec la marge indicative.
+  La valorisation du stock reste au CMUP (RG-S2).
 - RG-P9 : Le prix de vente au détail est obligatoire ; le **prix de vente en gros** est facultatif.
   Un produit sans prix de gros ne peut pas être ajouté à une vente en gros.
 
@@ -411,3 +414,6 @@ app/src/main/java/mg/tsena/
   produit et point de vente, retours et remises déduits), état des stocks valorisé par dépôt, états financiers
   par exercice (compte de résultat, bilan, flux de trésorerie, balance) partageables. Correction : salaires au
   compte 641 (et non 661, charges financières).
+- **Accueil** : grandes icônes par module (Catalogue, Stocks, Ventes, Approvisionnement, Dépenses, Comptabilité,
+  Utilisateurs), visibles selon les permissions ; un appui ouvre la liste des écrans du module (`ui/home/Modules.kt`).
+  Prix d'achat facultatif par produit (RG-P10).

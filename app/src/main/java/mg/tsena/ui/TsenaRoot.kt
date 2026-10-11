@@ -44,6 +44,8 @@ import mg.tsena.ui.catalogue.ProduitFormScreen
 import mg.tsena.ui.catalogue.ProduitsScreen
 import mg.tsena.ui.catalogue.UnitesScreen
 import mg.tsena.ui.home.HomeScreen
+import mg.tsena.ui.home.Module
+import mg.tsena.ui.home.ModuleScreen
 import mg.tsena.ui.rapports.EtatStocksScreen
 import mg.tsena.ui.rapports.EtatsFinanciersScreen
 import mg.tsena.ui.rapports.RapportVentesScreen
@@ -104,6 +106,7 @@ object Routes {
     const val PLAN_COMPTABLE = "comptabilite/plan"
     const val GRAND_LIVRE = "comptabilite/compte/{numero}"
     const val TABLEAU_DE_BORD = "rapports"
+    const val MODULE = "module/{nom}"
     const val RAPPORT_VENTES = "rapports/ventes"
     const val ETAT_STOCKS = "rapports/stocks"
     const val ETATS_FINANCIERS = "rapports/etats"
@@ -121,6 +124,7 @@ object Routes {
     fun fournisseur(id: String) = "fournisseurs/$id"
     fun client(id: String) = "clients/$id"
     fun grandLivre(numero: String) = "comptabilite/compte/$numero"
+    fun module(module: Module) = "module/${module.name}"
 }
 
 private val TYPES_SAUVEGARDE = arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")
@@ -168,6 +172,15 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
                 utilisateur = etat.utilisateur,
                 onUtilisateurs = { nav.navigate("utilisateurs") },
                 onRestaurer = onRestaurer,
+                onOuvrir = { route -> nav.navigate(route) },
+            )
+        }
+        composable(Routes.MODULE) { entree ->
+            val module = Module.entries.firstOrNull { it.name == entree.arguments?.getString("nom") } ?: Module.CATALOGUE
+            ModuleScreen(
+                module = module,
+                utilisateur = etat.utilisateur,
+                onRetour = { nav.popBackStack() },
                 onOuvrir = { route -> nav.navigate(route) },
             )
         }

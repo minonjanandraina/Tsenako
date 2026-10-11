@@ -71,6 +71,7 @@ data class FormProduit(
     val codeBarre: String = "",
     val categorieId: String? = null,
     val uniteId: String? = null,
+    val prixAchat: String = "",
     val prix: String = "",
     val prixGros: String = "",
     val seuil: String = "",
@@ -124,6 +125,7 @@ class ProduitFormViewModel(
                         codeBarre = p.codeBarre.orEmpty(),
                         categorieId = p.typeProduitId,
                         uniteId = p.uniteId,
+                        prixAchat = p.prixAchat?.toString().orEmpty(),
                         prix = p.prixVente.toString(),
                         prixGros = p.prixVenteGros?.toString().orEmpty(),
                         seuil = if (p.seuilAlerteMilli == 0L) "" else Quantite.formater(p.seuilAlerteMilli),
@@ -173,6 +175,8 @@ class ProduitFormViewModel(
         val f = form
         val unite = unites.value.firstOrNull { it.id == f.uniteId }
         val prix = Montant.parser(f.prix)
+        // Vide = prix d'achat non renseigné
+        val prixAchat = if (f.prixAchat.isBlank()) null else Montant.parser(f.prixAchat)
         // Vide = pas de vente en gros pour ce produit
         val prixGros = if (f.prixGros.isBlank()) null else Montant.parser(f.prixGros)
         val seuil = Quantite.parser(f.seuil, unite?.decimale ?: false)
@@ -180,6 +184,7 @@ class ProduitFormViewModel(
             f.photo == null -> "Ajoutez une photo du produit."
             f.categorieId == null -> "Choisissez une catégorie."
             unite == null -> "Choisissez une unité."
+            f.prixAchat.isNotBlank() && prixAchat == null -> "Prix d'achat invalide (nombre entier en Ariary)."
             prix == null -> "Prix de vente au détail invalide (nombre entier en Ariary)."
             f.prixGros.isNotBlank() && prixGros == null -> "Prix de vente en gros invalide (nombre entier en Ariary)."
             seuil == null -> if (unite.decimale) "Seuil d'alerte invalide." else "Le seuil d'alerte doit être un nombre entier pour l'unité « ${unite.nom} »."
@@ -198,6 +203,7 @@ class ProduitFormViewModel(
                         codeBarre = f.codeBarre,
                         categorieId = f.categorieId,
                         uniteId = f.uniteId,
+                        prixAchat = prixAchat,
                         prixVente = prix,
                         prixVenteGros = prixGros,
                         seuilAlerteMilli = seuil,
@@ -346,6 +352,10 @@ fun ProduitFormScreen(
             )
 
             ChampTexte(
+                f.prixAchat, { v -> vm.modifier { copy(prixAchat = v.filter { it.isDigit() }) } },
+                "Prix d'achat (Ar) par ${unite?.symbole ?: "unité"} — facultatif", largeur, KeyboardType.Number,
+            )
+            ChampTexte(
                 f.prix, { v -> vm.modifier { copy(prix = v.filter { it.isDigit() }) } },
                 "Prix de vente au détail (Ar) par ${unite?.symbole ?: "unité"}", largeur, KeyboardType.Number,
             )
@@ -357,6 +367,7 @@ fun ProduitFormScreen(
                 "Sans prix de gros, le produit ne pourra pas être vendu en gros.",
                 style = MaterialTheme.typography.bodySmall,
             )
+            margeIndicative(f.prixAchat, f.prix, f.prixGros)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             ChampTexte(
                 f.seuil, { v -> vm.modifier { copy(seuil = v) } },
                 "Seuil d'alerte de stock (${unite?.symbole ?: "unité"})", largeur,
@@ -391,4 +402,14 @@ fun ProduitFormScreen(
             onAnnuler = vm::fermerDialogueCategorie,
         )
     }
+}
+
+/** Marge indicative au prix d'achat saisi : « Marge détail : 250 Ar (20 %) · gros : 100 Ar (9 %) ». */
+private fun margeIndicative(prixAchat: String, prixDetail: String, prixGros: String): String? {
+    val achat = Montant.parser(prixAchat)?.takeIf { it > 0 } ?: return null
+    fun marge(texte: String): String? = Montant.parser(texte)?.takeIf { it > 0 }?.let { vente ->
+        "${Montant.formater(vente - achat)} (${(vente - achat) * 100 / vente} %)"
+    }
+    val detail = marge(prixDetail) ?: return null
+    return "Marge détail : $detail" + (marge(prixGros)?.let { " · gros : $it" } ?: "")
 }

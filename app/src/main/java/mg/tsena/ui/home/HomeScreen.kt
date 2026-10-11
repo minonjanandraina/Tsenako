@@ -3,9 +3,10 @@ package mg.tsena.ui.home
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.database.SQLException
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -37,7 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -53,7 +52,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import mg.tsena.R
 import mg.tsena.appro.ApproRepository
 import mg.tsena.auth.AuthRepository
 import mg.tsena.auth.UtilisateurConnecte
@@ -118,6 +116,8 @@ class HomeViewModel(
 
 private const val UN_JOUR_MS = 24 * 60 * 60 * 1000L
 
+private class Tuile(val titre: String, val alerte: String?, val icone: @Composable () -> Painter, val onClick: () -> Unit)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -160,159 +160,41 @@ fun HomeScreen(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            if (utilisateur.peut(Permission.GERER_PRODUITS) || utilisateur.peut(Permission.GERER_REFERENTIEL)) {
-                Text("Catalogue", style = MaterialTheme.typography.titleMedium)
-                Card(Modifier.fillMaxWidth()) {
-                    if (utilisateur.peut(Permission.GERER_PRODUITS)) {
-                        EntreeMenu("Produits", "Photos, prix, codes", painterResource(R.drawable.ic_produits)) {
-                            onOuvrir(Routes.PRODUITS)
-                        }
-                        EntreeMenu("Catégories", "Classement des produits", painterResource(R.drawable.ic_categories)) {
-                            onOuvrir(Routes.CATEGORIES)
-                        }
-                        EntreeMenu("Unités", "Pièce, kg, litre, sac…", painterResource(R.drawable.ic_unites)) {
-                            onOuvrir(Routes.UNITES)
-                        }
-                    }
-                    if (utilisateur.peut(Permission.GERER_REFERENTIEL)) {
-                        EntreeMenu("Dépôts et points de vente", "Salles de stockage, boutiques", painterResource(R.drawable.ic_lieux)) {
-                            onOuvrir(Routes.LIEUX)
-                        }
-                    }
-                }
-            }
-
-            if (utilisateur.peut(Permission.GERER_STOCK)) {
-                val nbAlertes by vm.nbAlertes.collectAsStateWithLifecycle()
-                Text("Stocks", style = MaterialTheme.typography.titleMedium)
-                Card(Modifier.fillMaxWidth()) {
-                    EntreeMenu("Stock par dépôt", "Quantités, coût moyen, pertes", painterResource(R.drawable.ic_stock)) {
-                        onOuvrir(Routes.STOCKS)
-                    }
-                    EntreeMenu("Inventaires", "Compter le stock et corriger les écarts", painterResource(R.drawable.ic_inventaire)) {
-                        onOuvrir(Routes.INVENTAIRES)
-                    }
-                    ListItem(
-                        headlineContent = { Text("Alertes de stock") },
-                        supportingContent = {
-                            Text(
-                                if (nbAlertes == 0) "Aucun produit sous son seuil" else "$nbAlertes produit(s) sous le seuil",
-                                color = if (nbAlertes == 0) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-                            )
+            val nbAlertes by vm.nbAlertes.collectAsStateWithLifecycle()
+            val nbEnTransit by vm.nbTransfertsEnTransit.collectAsStateWithLifecycle()
+            // Grandes icônes : modules accessibles, puis la gestion des utilisateurs
+            val tuiles = Module.entries
+                .filter { entreesModule(it, utilisateur, nbAlertes, nbEnTransit).isNotEmpty() }
+                .map { module ->
+                    Tuile(
+                        titre = module.titre,
+                        alerte = when {
+                            module == Module.STOCKS && nbAlertes > 0 -> "$nbAlertes alerte(s)"
+                            module == Module.APPRO && nbEnTransit > 0 -> "$nbEnTransit en transit"
+                            else -> null
                         },
-                        leadingContent = {
-                            Icon(
-                                Icons.Filled.Warning,
-                                contentDescription = null,
-                                tint = if (nbAlertes == 0) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-                            )
-                        },
-                        modifier = Modifier.clickable { onOuvrir(Routes.ALERTES) },
+                        icone = { iconeModule(module) },
+                        onClick = { onOuvrir(Routes.module(module)) },
                     )
-                }
-            }
-
-            if (utilisateur.peut(Permission.VENDRE) || utilisateur.peut(Permission.GERER_CAISSE)) {
-                Text("Ventes", style = MaterialTheme.typography.titleMedium)
-                Card(Modifier.fillMaxWidth()) {
-                    EntreeMenu("Caisse et vente", "Ouvrir la caisse, vendre, clôturer", rememberVectorPainter(Icons.Filled.ShoppingCart)) {
-                        onOuvrir(Routes.CAISSE)
+                } + listOfNotNull(
+                    if (utilisateur.peut(Permission.GERER_UTILISATEURS)) {
+                        Tuile("Utilisateurs", null, { rememberVectorPainter(Icons.Filled.Person) }, onUtilisateurs)
+                    } else {
+                        null
                     }
-                    if (utilisateur.peut(Permission.VENDRE)) {
-                        EntreeMenu("Ventes", "Tickets, retours, annulations", painterResource(R.drawable.ic_ventes)) {
-                            onOuvrir(Routes.VENTES)
-                        }
-                        EntreeMenu("Clients", "Clients en gros et à crédit", rememberVectorPainter(Icons.Filled.Person)) {
-                            onOuvrir(Routes.CLIENTS)
-                        }
-                    }
-                    if (utilisateur.peut(Permission.GERER_PRODUITS)) {
-                        EntreeMenu("Prix par point de vente", "Prix particuliers d'une boutique", painterResource(R.drawable.ic_prix)) {
-                            onOuvrir(Routes.PRIX_POINTS_VENTE)
-                        }
-                    }
-                }
-            }
-
-            if (utilisateur.peut(Permission.GERER_APPRO)) {
-                val nbEnTransit by vm.nbTransfertsEnTransit.collectAsStateWithLifecycle()
-                Text("Approvisionnement", style = MaterialTheme.typography.titleMedium)
-                Card(Modifier.fillMaxWidth()) {
-                    EntreeMenu("Commandes", "Commander aux fournisseurs", painterResource(R.drawable.ic_commande)) {
-                        onOuvrir(Routes.COMMANDES)
-                    }
-                    EntreeMenu("Réceptions", "Entrées de marchandise, achats", painterResource(R.drawable.ic_reception)) {
-                        onOuvrir(Routes.RECEPTIONS)
-                    }
-                    EntreeMenu(
-                        "Transferts entre dépôts",
-                        if (nbEnTransit == 0) "Déplacer du stock" else "$nbEnTransit transfert(s) en transit à réceptionner",
-                        painterResource(R.drawable.ic_transfert),
-                    ) {
-                        onOuvrir(Routes.TRANSFERTS)
-                    }
-                    EntreeMenu("Fournisseurs", "Coordonnées, total des achats", painterResource(R.drawable.ic_appro)) {
-                        onOuvrir(Routes.FOURNISSEURS)
-                    }
-                    EntreeMenu("Unités d'achat", "Carton, sac… convertis en unités de stock", painterResource(R.drawable.ic_unites)) {
-                        onOuvrir(Routes.CONVERSIONS)
-                    }
-                }
-            }
-
-            if (utilisateur.peut(Permission.GERER_DEPENSES)) {
-                Text("Dépenses", style = MaterialTheme.typography.titleMedium)
-                Card(Modifier.fillMaxWidth()) {
-                    EntreeMenu("Dépenses", "Loyer, électricité, transport, salaires…", painterResource(R.drawable.ic_depenses)) {
-                        onOuvrir(Routes.DEPENSES)
-                    }
-                    EntreeMenu("Fournisseurs à payer", "Dettes, échéances et paiements", painterResource(R.drawable.ic_appro)) {
-                        onOuvrir(Routes.FOURNISSEURS)
-                    }
-                }
-            }
-
-            if (utilisateur.peut(Permission.VOIR_COMPTABILITE)) {
-                Text("Comptabilité", style = MaterialTheme.typography.titleMedium)
-                Card(Modifier.fillMaxWidth()) {
-                    EntreeMenu("Tableau de bord", "Ventes, marges, stock, dettes et créances", painterResource(R.drawable.ic_stock)) {
-                        onOuvrir(Routes.TABLEAU_DE_BORD)
-                    }
-                    EntreeMenu("États financiers", "Bilan, compte de résultat, flux de trésorerie", painterResource(R.drawable.ic_comptabilite)) {
-                        onOuvrir(Routes.ETATS_FINANCIERS)
-                    }
-                    EntreeMenu("Comptabilité", "Journaux, plan comptable PCG 2005, exercices", painterResource(R.drawable.ic_comptabilite)) {
-                        onOuvrir(Routes.COMPTABILITE)
-                    }
+                )
+            tuiles.chunked(2).forEach { rangee ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    rangee.forEach { t -> TuileModule(t.titre, t.icone(), t.alerte, t.onClick, Modifier.weight(1f)) }
+                    if (rangee.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
 
             if (utilisateur.peut(Permission.SAUVEGARDER)) {
                 CarteSauvegarde(vm, peutRestaurer = utilisateur.peut(Permission.RESTAURER), onRestaurer = onRestaurer)
             }
-
-            if (utilisateur.peut(Permission.GERER_UTILISATEURS)) {
-                Card(Modifier.fillMaxWidth()) {
-                    ListItem(
-                        headlineContent = { Text("Utilisateurs") },
-                        supportingContent = { Text("Comptes, rôles et codes PIN") },
-                        leadingContent = { Icon(Icons.Filled.Person, contentDescription = null) },
-                        trailingContent = { OutlinedButton(onClick = onUtilisateurs) { Text("Gérer") } },
-                    )
-                }
-            }
         }
     }
-}
-
-@Composable
-private fun EntreeMenu(titre: String, description: String, icone: Painter, onClick: () -> Unit) {
-    ListItem(
-        headlineContent = { Text(titre) },
-        supportingContent = { Text(description) },
-        leadingContent = { Icon(icone, contentDescription = null) },
-        modifier = Modifier.clickable(onClick = onClick),
-    )
 }
 
 @Composable

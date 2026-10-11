@@ -144,6 +144,7 @@ fun ProduitsScreen(
                                 listOfNotNull(
                                     p.produit.code,
                                     p.categorieNom,
+                                    p.produit.prixAchat?.let { "Achat : ${Montant.formater(it)}" },
                                     p.produit.prixVenteGros?.let { "Gros : ${Montant.formater(it)}" },
                                     if (p.produit.actif) null else "Inactif",
                                 ).joinToString(" · ")
