@@ -92,9 +92,6 @@ fun entreesModule(module: Module, u: UtilisateurConnecte, nbAlertes: Int, nbEnTr
                 EntreeModule("Produits", "Photos, prix d'achat et de vente, codes", Routes.PRODUITS) { painterResource(R.drawable.ic_produits) },
                 EntreeModule("Catégories", "Classement des produits", Routes.CATEGORIES) { painterResource(R.drawable.ic_categories) },
                 EntreeModule("Unités", "Pièce, kg, litre, sac…", Routes.UNITES) { painterResource(R.drawable.ic_unites) },
-            ) + si(
-                Permission.GERER_REFERENTIEL,
-                EntreeModule("Dépôts et points de vente", "Salles de stockage, boutiques", Routes.LIEUX) { painterResource(R.drawable.ic_lieux) },
             )
         Module.STOCKS -> si(
             Permission.GERER_STOCK,
@@ -144,6 +141,9 @@ fun entreesModule(module: Module, u: UtilisateurConnecte, nbAlertes: Int, nbEnTr
             ) { painterResource(R.drawable.ic_transfert) },
             EntreeModule("Fournisseurs", "Coordonnées, total des achats", Routes.FOURNISSEURS) { painterResource(R.drawable.ic_appro) },
             EntreeModule("Unités d'achat", "Carton, sac… convertis en unités de stock", Routes.CONVERSIONS) { painterResource(R.drawable.ic_unites) },
+        ) + si(
+            Permission.GERER_REFERENTIEL,
+            EntreeModule("Dépôts et points de vente", "Salles de stockage, boutiques", Routes.LIEUX) { painterResource(R.drawable.ic_lieux) },
         )
         Module.DEPENSES -> si(
             Permission.GERER_DEPENSES,
