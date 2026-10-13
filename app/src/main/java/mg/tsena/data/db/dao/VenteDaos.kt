@@ -101,7 +101,7 @@ interface ClientDao {
                COALESCE((SELECT SUM(p.montant) FROM paiement_vente p JOIN vente v ON v.id = p.vente_id
                          WHERE v.client_id = c.id AND v.statut = 'VALIDEE' AND p.mode = 'CREDIT'), 0)
              - COALESCE((SELECT SUM(r.montant) FROM retour_vente r JOIN vente v ON v.id = r.vente_id
-                         WHERE v.client_id = c.id AND r.mode_remboursement = 'CREDIT'), 0)
+                         WHERE v.client_id = c.id AND r.mode_remboursement = 'CREDIT' AND r.statut = 'VALIDEE'), 0)
              - COALESCE((SELECT SUM(e.montant) FROM encaissement_client e WHERE e.client_id = c.id), 0) AS credit_du
         FROM client c
         WHERE c.deleted_at IS NULL
@@ -262,7 +262,7 @@ interface VenteDao {
     @Query(
         """
         SELECT v.id AS venteId, v.numero, v.client_id AS clientId, v.date, SUM(p.montant) AS montant,
-               COALESCE((SELECT SUM(r.montant) FROM retour_vente r WHERE r.vente_id = v.id AND r.mode_remboursement = 'CREDIT'), 0) AS retoursCredit
+               COALESCE((SELECT SUM(r.montant) FROM retour_vente r WHERE r.vente_id = v.id AND r.mode_remboursement = 'CREDIT' AND r.statut = 'VALIDEE'), 0) AS retoursCredit
         FROM vente v
         JOIN paiement_vente p ON p.vente_id = v.id AND p.mode = 'CREDIT'
         WHERE v.statut = 'VALIDEE' AND v.client_id IS NOT NULL
@@ -296,7 +296,7 @@ interface VenteDao {
     @Query("SELECT * FROM paiement_vente WHERE vente_id = :venteId")
     suspend fun paiements(venteId: String): List<PaiementVenteEntity>
 
-    @Query("SELECT COUNT(*) FROM retour_vente WHERE vente_id = :venteId")
+    @Query("SELECT COUNT(*) FROM retour_vente WHERE vente_id = :venteId AND statut = 'VALIDEE'")
     suspend fun compterRetoursVente(venteId: String): Int
 
     /** Ventes et retours ne sont jamais supprimés : les comptes donnent les prochains numéros (RG-X4). */
@@ -323,6 +323,18 @@ interface VenteDao {
 
     @Insert
     suspend fun insererRetour(retour: RetourVenteEntity)
+
+    @Update
+    suspend fun modifierRetour(retour: RetourVenteEntity)
+
+    @Query("SELECT * FROM retour_vente WHERE id = :id")
+    suspend fun getRetour(id: String): RetourVenteEntity?
+
+    @Query("SELECT * FROM ligne_retour_vente WHERE retour_id = :retourId")
+    suspend fun lignesRetour(retourId: String): List<LigneRetourVenteEntity>
+
+    @Query("SELECT * FROM ligne_vente WHERE id = :id")
+    suspend fun ligne(id: String): LigneVenteEntity?
 
     @Insert
     suspend fun insererLignesRetour(lignes: List<LigneRetourVenteEntity>)

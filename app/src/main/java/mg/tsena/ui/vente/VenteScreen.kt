@@ -55,6 +55,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -102,6 +103,8 @@ enum class ChoixPaiement(val libelle: String) {
 @OptIn(ExperimentalCoroutinesApi::class)
 class VenteViewModel(
     private val pointVenteId: String,
+    /** Vente à corriger : le panier en est pré-rempli et la validation remplace l'ancienne vente */
+    private val corrigeId: String?,
     private val ventes: VenteRepository,
     private val photos: PhotoManager,
     creditRepository: CreditRepository,
@@ -169,6 +172,26 @@ class VenteViewModel(
         private set
 
     val totalBrut: Long get() = panier.sumOf { it.montant }
+
+    /** Numéro de la vente corrigée, pour le bandeau */
+    var numeroCorrige by mutableStateOf<String?>(null)
+        private set
+
+    init {
+        if (corrigeId != null) {
+            viewModelScope.launch {
+                try {
+                    val c = ventes.preparerCorrection(corrigeId)
+                    numeroCorrige = c.vente.numero
+                    type = c.vente.typeVente
+                    client = c.clientId?.let { id -> ventes.observerClients().first().firstOrNull { it.client.id == id } }
+                    panier = c.lignes.map { (p, q) -> LignePanier(p, q, CalculsVente.prixApplique(type, p.prixDetail, p.prixGros) ?: p.prixDetail) }
+                } catch (e: RegleMetierException) {
+                    erreur = e.message
+                }
+            }
+        }
+    }
 
     fun fichierPhoto(chemin: String): File = photos.fichier(chemin)
 
@@ -285,7 +308,11 @@ class VenteViewModel(
         erreur = null
         viewModelScope.launch {
             try {
-                venteTerminee = ventes.validerVente(saisie)
+                venteTerminee = if (corrigeId != null) {
+                    ventes.corrigerVente(corrigeId, saisie, "Erreur de saisie")
+                } else {
+                    ventes.validerVente(saisie)
+                }
                 encaissementOuvert = false
                 enAttenteAutorisation = null
             } catch (e: AutorisationRequiseException) {
@@ -310,9 +337,9 @@ class VenteViewModel(
     }
 
     companion object {
-        fun factory(pointVenteId: String) = viewModelFactory {
+        fun factory(pointVenteId: String, corrigeId: String?) = viewModelFactory {
             initializer {
-                VenteViewModel(pointVenteId, container.venteRepository, container.photoManager, container.creditRepository, container.catalogueRepository)
+                VenteViewModel(pointVenteId, corrigeId, container.venteRepository, container.photoManager, container.creditRepository, container.catalogueRepository)
             }
         }
     }
@@ -322,9 +349,13 @@ class VenteViewModel(
 @Composable
 fun VenteScreen(
     pointVenteId: String,
+    corrigeId: String?,
     onRetour: () -> Unit,
     onTicket: (venteId: String) -> Unit,
-    vm: VenteViewModel = viewModel(key = "vente_$pointVenteId", factory = VenteViewModel.factory(pointVenteId)),
+    vm: VenteViewModel = viewModel(
+        key = "vente_${pointVenteId}_${corrigeId.orEmpty()}",
+        factory = VenteViewModel.factory(pointVenteId, corrigeId),
+    ),
 ) {
     val pv by vm.pointVente.collectAsStateWithLifecycle()
     val session by vm.session.collectAsStateWithLifecycle()
@@ -362,7 +393,7 @@ fun VenteScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Vente ${vm.type.libelle.lowercase()}")
+                        Text(if (corrigeId != null) "Corriger la vente" else "Vente ${vm.type.libelle.lowercase()}")
                         Text(pv?.pointVente?.nom.orEmpty(), style = MaterialTheme.typography.bodySmall)
                     }
                 },
@@ -386,6 +417,13 @@ fun VenteScreen(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            vm.numeroCorrige?.let {
+                Text(
+                    "Correction de la vente $it : modifiez le panier puis encaissez. L'ancienne vente sera annulée.",
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
             if (session == null) {
                 Text(
                     "La caisse de ce point de vente est fermée : ouvrez-la avant de vendre.",

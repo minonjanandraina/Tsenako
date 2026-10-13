@@ -25,6 +25,8 @@ import mg.tsena.ui.appro.CommandesScreen
 import mg.tsena.ui.appro.ConversionsScreen
 import mg.tsena.ui.appro.FournisseurScreen
 import mg.tsena.ui.appro.FournisseursScreen
+import mg.tsena.ui.appro.LotApproScreen
+import mg.tsena.ui.appro.LotsApproScreen
 import mg.tsena.ui.finance.CategoriesDepenseScreen
 import mg.tsena.ui.finance.CoffreScreen
 import mg.tsena.ui.finance.DepenseFormScreen
@@ -88,13 +90,15 @@ object Routes {
     const val COMMANDE_FORM = "commande-saisie?id={id}"
     const val COMMANDE = "commandes/{id}"
     const val RECEPTIONS = "receptions"
-    const val RECEPTION_FORM = "reception-saisie?commandeId={commandeId}"
+    const val RECEPTION_FORM = "reception-saisie?commandeId={commandeId}&lotId={lotId}"
     const val RECEPTION = "receptions/{id}"
     const val TRANSFERTS = "transferts"
+    const val LOTS_APPRO = "appros"
+    const val LOT_APPRO = "appros/{id}"
     const val TRANSFERT_FORM = "transfert-saisie"
     const val TRANSFERT = "transferts/{id}"
     const val CAISSE = "caisse"
-    const val VENTE = "caisse/vente/{pointVenteId}"
+    const val VENTE = "caisse/vente/{pointVenteId}?corrige={corrige}"
     const val VENTES = "ventes"
     const val VENTE_DETAIL = "ventes/{id}"
     const val CLIENTS = "clients"
@@ -122,10 +126,15 @@ object Routes {
     fun inventaire(id: String) = "inventaires/$id"
     fun commandeForm(id: String?) = if (id == null) "commande-saisie" else "commande-saisie?id=$id"
     fun commande(id: String) = "commandes/$id"
-    fun receptionForm(commandeId: String?) = if (commandeId == null) "reception-saisie" else "reception-saisie?commandeId=$commandeId"
+    fun receptionForm(commandeId: String?, lotId: String? = null): String {
+        val parametres = listOfNotNull(commandeId?.let { "commandeId=$it" }, lotId?.let { "lotId=$it" })
+        return "reception-saisie" + if (parametres.isEmpty()) "" else "?" + parametres.joinToString("&")
+    }
     fun reception(id: String) = "receptions/$id"
     fun transfert(id: String) = "transferts/$id"
-    fun vente(pointVenteId: String) = "caisse/vente/$pointVenteId"
+    fun lotAppro(id: String) = "appros/$id"
+    fun vente(pointVenteId: String, corrigeId: String? = null) =
+        "caisse/vente/$pointVenteId" + (corrigeId?.let { "?corrige=$it" } ?: "")
     fun venteDetail(id: String) = "ventes/$id"
     fun fournisseur(id: String) = "fournisseurs/$id"
     fun client(id: String) = "clients/$id"
@@ -291,10 +300,14 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
         }
         composable(
             Routes.RECEPTION_FORM,
-            arguments = listOf(navArgument("commandeId") { type = NavType.StringType; nullable = true; defaultValue = null }),
+            arguments = listOf(
+                navArgument("commandeId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("lotId") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ),
         ) { entree ->
             ReceptionFormScreen(
                 commandeId = entree.arguments?.getString("commandeId"),
+                lotId = entree.arguments?.getString("lotId"),
                 onRetour = { nav.popBackStack() },
                 onValidee = { receptionId ->
                     nav.popBackStack()
@@ -333,9 +346,13 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
                 onVendre = { pointVenteId -> nav.navigate(Routes.vente(pointVenteId)) },
             )
         }
-        composable(Routes.VENTE) { entree ->
+        composable(
+            Routes.VENTE,
+            arguments = listOf(navArgument("corrige") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { entree ->
             VenteScreen(
                 pointVenteId = entree.arguments?.getString("pointVenteId").orEmpty(),
+                corrigeId = entree.arguments?.getString("corrige"),
                 onRetour = { nav.popBackStack() },
                 onTicket = { venteId -> nav.navigate(Routes.venteDetail(venteId)) },
             )
@@ -352,6 +369,7 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
                 venteId = entree.arguments?.getString("id").orEmpty(),
                 nomCommerce = etat.commerce.nom,
                 peutAnnuler = etat.utilisateur.peut(Permission.ANNULER_VENTE),
+                onCorriger = { venteId, pointVenteId -> nav.navigate(Routes.vente(pointVenteId, venteId)) },
                 onRetour = { nav.popBackStack() },
             )
         }
@@ -420,6 +438,20 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
             GrandLivreScreen(numero = entree.arguments?.getString("numero").orEmpty(), onRetour = { nav.popBackStack() })
         }
         composable(Routes.PRIX_POINTS_VENTE) { PrixPointVenteScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.LOTS_APPRO) {
+            LotsApproScreen(onRetour = { nav.popBackStack() }, onOuvrir = { id -> nav.navigate(Routes.lotAppro(id)) })
+        }
+        composable(Routes.LOT_APPRO) { entree ->
+            val lotId = entree.arguments?.getString("id").orEmpty()
+            LotApproScreen(
+                lotId = lotId,
+                peutModifierBudget = etat.utilisateur.peut(Permission.GERER_COFFRE),
+                onRetour = { nav.popBackStack() },
+                onAjouterAchat = { nav.navigate(Routes.receptionForm(null, lotId)) },
+                onAchat = { receptionId -> nav.navigate(Routes.reception(receptionId)) },
+                onTransfert = { transfertId -> nav.navigate(Routes.transfert(transfertId)) },
+            )
+        }
         composable(Routes.TRANSFERT) { entree ->
             TransfertScreen(transfertId = entree.arguments?.getString("id").orEmpty(), onRetour = { nav.popBackStack() })
         }

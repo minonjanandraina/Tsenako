@@ -175,7 +175,7 @@ interface EncaissementClientDao {
         SELECT COALESCE((SELECT SUM(p.montant) FROM paiement_vente p JOIN vente v ON v.id = p.vente_id
                          WHERE v.client_id = :clientId AND v.statut = 'VALIDEE' AND p.mode = 'CREDIT'), 0)
              - COALESCE((SELECT SUM(r.montant) FROM retour_vente r JOIN vente v ON v.id = r.vente_id
-                         WHERE v.client_id = :clientId AND r.mode_remboursement = 'CREDIT'), 0)
+                         WHERE v.client_id = :clientId AND r.mode_remboursement = 'CREDIT' AND r.statut = 'VALIDEE'), 0)
              - COALESCE((SELECT SUM(montant) FROM encaissement_client WHERE client_id = :clientId), 0)
         """
     )

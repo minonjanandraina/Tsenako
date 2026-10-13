@@ -195,6 +195,17 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
   l'unité du produit. Le coût d'entrée en stock = montant de la ligne / quantité, arrondi à l'Ariary.
 - RG-A8 : Numéros séquentiels sans trou par type de document (`CF`, `BR`, `TR`) ; aucun document n'est supprimé.
 
+### 5.4b Appros (lots d'achats)
+- RG-A11 : Un **appro** (`lot_appro`, `AP-000001`, nom « Appro AAAA-MM-JJ ») regroupe plusieurs achats chez plusieurs
+  fournisseurs. Chaque achat est une réception rattachée (`reception.lot_id`) au dépôt d'achat de l'appro, payée directement
+  au fournisseur en espèces depuis le coffre (option cochée par défaut) ; le total payé ne dépasse jamais le **budget** de l'appro
+  (modifiable par qui gère le coffre, jamais sous le déjà payé). Un appro sans achat peut être annulé.
+- RG-A12 : **Étiquetage** (`etiquetage_appro`) : les codes produit sont posés à la main ; pour chaque produit acheté on saisit
+  la quantité réellement comptée. Écart avec l'acheté (retours fournisseur déduits) ⇒ motif obligatoire. Reste à étiqueter
+  affiché ; l'envoi est refusé tant qu'un produit n'est pas compté.
+- RG-A13 : **Envoi** : écarts régularisés au dépôt d'achat (manque = `PERTE`, surplus = `AJUSTEMENT` au prix d'achat), puis un
+  transfert (RG-T2) part vers le dépôt de destination avec les quantités comptées ; il se réceptionne comme tout transfert.
+
 ### 5.5 Transferts
 - RG-T1 : Dépôt source ≠ dépôt destination.
 - RG-T2 : À l'envoi : sortie du dépôt source (statut `EN_TRANSIT`) ; à la réception : entrée au dépôt destination.
@@ -251,6 +262,12 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
   propriétaire et gérant). Comptabilité : clôture 532 / 531, fond 531 / 532, apport 532 / 108, retrait 108 / 532 ;
   le mobile money reste au compte 517 (aucune écriture au versement). Plan : `531` Caisse des points de vente, `532` Coffre
   (remplacent le compte unique 53).
+
+- RG-V14 : **Correction d'une vente** (erreur de saisie) : mêmes conditions que l'annulation (caisse de la vente ouverte,
+  sans retour, permission gérant / propriétaire). La vente est annulée puis ressaisie dans la même opération, sous un nouveau
+  numéro qui garde le lien (`vente.corrige_de`). **Suppression d'un retour** : le retour passe `ANNULEE`, les articles ressortent
+  du stock (refusé si déjà revendus), l'argent revient en caisse, l'écriture est contre-passée ; possible tant que la caisse du
+  remboursement est ouverte (un remboursement sur crédit reste supprimable). Les retours annulés ne comptent plus dans les crédits.
 
 ### 5.8 Charges & dépenses
 - RG-D1 : Toute dépense a une catégorie, elle-même liée à un compte de charge (classe 6).
@@ -478,3 +495,6 @@ transaction Room que le document (RG-K9). Les tests miroir sont dans `app/src/te
 - **Coffre** (code écrit, non compilé localement) : argent versé au coffre à chaque clôture de caisse, fond de caisse pris
   au coffre, apports / retraits, écran « Coffre » (module Dépenses), choix caisse / coffre pour les dépenses et paiements
   fournisseurs avec refus si le solde est insuffisant (RG-C7, RG-D4b). Plan comptable : 53 remplacé par 531 / 532.
+- **Ventes et appros** (code écrit, non compilé localement) : correction d'une vente (panier pré-rempli, ancienne vente annulée),
+  suppression d'un retour client (RG-V14) ; module « Appros » (budget, achats payés du coffre, étiquetage, écarts, envoi
+  par transfert : RG-A11 à A13).

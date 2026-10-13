@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -182,7 +183,11 @@ class VenteDetailViewModel(
     val retours: StateFlow<List<RetourVenteEntity>> = ventes.observerRetours(venteId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    enum class Dialogue { ANNULER, RETOUR }
+    enum class Dialogue { ANNULER, RETOUR, SUPPRIMER_RETOUR }
+
+    /** Retour dont la suppression est demandée */
+    var retourASupprimer by mutableStateOf<RetourVenteEntity?>(null)
+        private set
 
     var dialogue by mutableStateOf<Dialogue?>(null)
         private set
@@ -204,6 +209,19 @@ class VenteDetailViewModel(
 
     fun fermer() {
         dialogue = null
+    }
+
+    fun demanderSuppressionRetour(r: RetourVenteEntity) {
+        retourASupprimer = r
+        ouvrir(Dialogue.SUPPRIMER_RETOUR)
+    }
+
+    fun supprimerRetour(motif: String) {
+        val r = retourASupprimer ?: return
+        executer {
+            ventes.annulerRetour(r.id, motif)
+            message = "Retour ${r.numero} supprimé : stock et caisse corrigés."
+        }
     }
 
     fun annuler(motif: String) {
@@ -276,6 +294,7 @@ fun VenteDetailScreen(
     venteId: String,
     nomCommerce: String,
     peutAnnuler: Boolean,
+    onCorriger: (venteId: String, pointVenteId: String) -> Unit,
     onRetour: () -> Unit,
     vm: VenteDetailViewModel = viewModel(key = "vente_detail_$venteId", factory = VenteDetailViewModel.factory(venteId)),
 ) {
@@ -373,8 +392,29 @@ fun VenteDetailScreen(
                 items(retours, key = { it.id }) { r ->
                     ListItem(
                         headlineContent = { Text("${r.numero} · ${r.motif}") },
-                        supportingContent = { Text("${formaterDateHeure(r.date)} · ${r.modeRemboursement.libelle}") },
-                        trailingContent = { Text("−" + Montant.formater(r.montant)) },
+                        supportingContent = {
+                            if (r.statut == StatutVente.VALIDEE) {
+                                Text("${formaterDateHeure(r.date)} · ${r.modeRemboursement.libelle}")
+                            } else {
+                                Text(
+                                    "Supprimé le ${r.dateAnnulation?.let(::formaterDateHeure).orEmpty()} : ${r.motifAnnulation.orEmpty()}",
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        },
+                        trailingContent = {
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    "−" + Montant.formater(r.montant),
+                                    textDecoration = if (r.statut == StatutVente.VALIDEE) null else TextDecoration.LineThrough,
+                                )
+                                if (peutAnnuler && r.statut == StatutVente.VALIDEE) {
+                                    TextButton(onClick = { vm.demanderSuppressionRetour(r) }) {
+                                        Text("Supprimer", color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+                        },
                     )
                 }
             }
@@ -387,7 +427,10 @@ fun VenteDetailScreen(
                             }
                         }
                         // RG-V6 : annulation tant que la caisse de la vente est ouverte et sans retour
-                        if (peutAnnuler && v.sessionStatut == StatutSession.OUVERTE && retours.isEmpty()) {
+                        if (peutAnnuler && v.sessionStatut == StatutSession.OUVERTE && retours.none { it.statut == StatutVente.VALIDEE }) {
+                            OutlinedButton(onClick = { onCorriger(v.vente.id, v.vente.pointVenteId) }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Corriger la vente")
+                            }
                             OutlinedButton(onClick = { vm.ouvrir(VenteDetailViewModel.Dialogue.ANNULER) }, modifier = Modifier.fillMaxWidth()) {
                                 Text("Annuler la vente", color = MaterialTheme.colorScheme.error)
                             }
@@ -412,6 +455,25 @@ fun VenteDetailScreen(
                     }
                 },
                 confirmButton = { TextButton(onClick = { vm.annuler(motif) }) { Text("Annuler la vente") } },
+                dismissButton = { TextButton(onClick = vm::fermer) { Text("Retour") } },
+            )
+        }
+        VenteDetailViewModel.Dialogue.SUPPRIMER_RETOUR -> {
+            var motif by rememberSaveable { mutableStateOf("") }
+            AlertDialog(
+                onDismissRequest = vm::fermer,
+                title = { Text("Supprimer ce retour ?") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Les articles ressortent du stock et l'argent rendu au client revient en caisse " +
+                                "(possible tant que la caisse du remboursement est ouverte). Le retour reste visible, supprimé.",
+                        )
+                        ChampTexte(motif, { motif = it }, "Motif", Modifier.fillMaxWidth())
+                        vm.erreur?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { vm.supprimerRetour(motif) }) { Text("Supprimer") } },
                 dismissButton = { TextButton(onClick = vm::fermer) { Text("Retour") } },
             )
         }

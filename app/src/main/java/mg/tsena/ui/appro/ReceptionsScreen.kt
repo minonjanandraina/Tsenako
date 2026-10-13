@@ -3,6 +3,7 @@ package mg.tsena.ui.appro
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -14,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -33,6 +35,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -54,6 +57,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import mg.tsena.appro.ApproRepository
+import mg.tsena.appro.LotApproRepository
 import mg.tsena.catalogue.PhotoManager
 import mg.tsena.container
 import mg.tsena.data.db.entity.CommandeAvecDetails
@@ -138,7 +142,10 @@ fun ReceptionsScreen(
 @OptIn(ExperimentalCoroutinesApi::class)
 class ReceptionFormViewModel(
     private val commandeId: String?,
+    /** Appro dont l'achat fait partie : dépôt imposé, paiement direct possible */
+    private val lotId: String?,
     private val appro: ApproRepository,
+    private val lots: LotApproRepository,
     stock: StockRepository,
     lieux: LieuRepository,
     private val photos: PhotoManager,
@@ -162,6 +169,10 @@ class ReceptionFormViewModel(
     var commande by mutableStateOf<CommandeAvecDetails?>(null)
         private set
     var fournisseurId by mutableStateOf<String?>(null)
+    /** Achat d'un appro : nom pour le titre, et paiement immédiat en espèces depuis le coffre */
+    var nomLot by mutableStateOf<String?>(null)
+        private set
+    var payerDirectement by mutableStateOf(true)
     var reference by mutableStateOf("")
     var confirmationOuverte by mutableStateOf(false)
         private set
@@ -173,6 +184,13 @@ class ReceptionFormViewModel(
         private set
 
     init {
+        if (lotId != null) {
+            viewModelScope.launch {
+                val l = lots.observerLot(lotId).first() ?: return@launch
+                nomLot = "${l.lot.nom} (${l.lot.numero})"
+                depotId.value = l.lot.depotSourceId
+            }
+        }
         if (commandeId != null) {
             viewModelScope.launch {
                 val c = appro.observerCommande(commandeId).first() ?: return@launch
@@ -207,7 +225,12 @@ class ReceptionFormViewModel(
         enCours = true
         viewModelScope.launch {
             try {
-                termine = appro.validerReception(commandeId, fournisseur, depot, reference, editeur.lignes.map { it.versAchat() })
+                val achats = editeur.lignes.map { it.versAchat() }
+                termine = if (lotId != null) {
+                    lots.ajouterAchat(lotId, fournisseur, reference, achats, payerDirectement)
+                } else {
+                    appro.validerReception(commandeId, fournisseur, depot, reference, achats)
+                }
             } catch (e: RegleMetierException) {
                 erreur = e.message
                 confirmationOuverte = false
@@ -218,9 +241,9 @@ class ReceptionFormViewModel(
     }
 
     companion object {
-        fun factory(commandeId: String?) = viewModelFactory {
+        fun factory(commandeId: String?, lotId: String?) = viewModelFactory {
             initializer {
-                ReceptionFormViewModel(commandeId, container.approRepository, container.stockRepository, container.lieuRepository, container.photoManager)
+                ReceptionFormViewModel(commandeId, lotId, container.approRepository, container.lotApproRepository, container.stockRepository, container.lieuRepository, container.photoManager)
             }
         }
     }
@@ -230,9 +253,13 @@ class ReceptionFormViewModel(
 @Composable
 fun ReceptionFormScreen(
     commandeId: String?,
+    lotId: String?,
     onRetour: () -> Unit,
     onValidee: (receptionId: String) -> Unit,
-    vm: ReceptionFormViewModel = viewModel(key = "reception_form_$commandeId", factory = ReceptionFormViewModel.factory(commandeId)),
+    vm: ReceptionFormViewModel = viewModel(
+        key = "reception_form_${commandeId}_$lotId",
+        factory = ReceptionFormViewModel.factory(commandeId, lotId),
+    ),
 ) {
     val fournisseurs by vm.fournisseurs.collectAsStateWithLifecycle()
     val depots by vm.depots.collectAsStateWithLifecycle()
@@ -250,7 +277,8 @@ fun ReceptionFormScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Réception")
+                        Text(if (lotId != null) "Achat de l'appro" else "Réception")
+                        vm.nomLot?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                         commande?.let { Text("Commande ${it.commande.numero}", style = MaterialTheme.typography.bodySmall) }
                     }
                 },
@@ -283,14 +311,24 @@ fun ReceptionFormScreen(
                             onSelection = { vm.fournisseurId = it.id },
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        Selecteur(
-                            libelle = "Dépôt de réception",
-                            valeurAffichee = depots.firstOrNull { it.id == depotId }?.nom.orEmpty(),
-                            options = depots,
-                            texte = { it.nom },
-                            onSelection = { vm.depotId.value = it.id },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                        if (lotId == null) {
+                            Selecteur(
+                                libelle = "Dépôt de réception",
+                                valeurAffichee = depots.firstOrNull { it.id == depotId }?.nom.orEmpty(),
+                                options = depots,
+                                texte = { it.nom },
+                                onSelection = { vm.depotId.value = it.id },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        } else {
+                            LigneInfo("Dépôt d'achat", depots.firstOrNull { it.id == depotId }?.nom.orEmpty())
+                        }
+                    }
+                    if (lotId != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = vm.payerDirectement, onCheckedChange = { vm.payerDirectement = it })
+                            Text("Payer le fournisseur tout de suite (espèces du coffre)")
+                        }
                     }
                     ChampTexte(vm.reference, { vm.reference = it }, "N° de facture ou de bon de livraison (facultatif)", Modifier.fillMaxWidth())
                 }

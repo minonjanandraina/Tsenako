@@ -52,6 +52,14 @@ import mg.tsena.stock.Valorisation
 
 data class LigneVenteSaisie(val produitId: String, val quantiteMilli: Long)
 
+/** Contenu d'une vente à corriger : sa fiche et ses articles, prêts à remettre dans le panier. */
+data class VenteACorriger(
+    val vente: VenteEntity,
+    val clientId: String?,
+    /** Produit vendable (stock augmenté de la quantité de l'ancienne vente) et quantité en millièmes */
+    val lignes: List<Pair<ProduitVente, Long>>,
+)
+
 data class PaiementSaisi(val mode: ModePaiement, val montant: Long, val reference: String? = null)
 
 data class SaisieVente(
@@ -63,6 +71,8 @@ data class SaisieVente(
     val paiements: List<PaiementSaisi>,
     /** Code PIN d'un gérant / propriétaire pour une remise au-delà du seuil (RG-V5) */
     val pinAutorisation: String? = null,
+    /** Vente annulée que celle-ci corrige (renseigné par [VenteRepository.corrigerVente]) */
+    val corrigeDe: String? = null,
 )
 
 /** Caisses (sessions, opérations), clients, prix par point de vente, ventes et retours. */
@@ -390,6 +400,7 @@ class VenteRepository(
                 remise = saisie.remise,
                 totalNet = totalNet,
                 remiseAutoriseePar = autorisePar,
+                corrigeDe = saisie.corrigeDe,
                 typePaiement = CalculsVente.typePaiement(paiements.map { it.mode }.ifEmpty { listOf(ModePaiement.ESPECES) }),
                 createdBy = vendeur.id,
             )
@@ -485,6 +496,88 @@ class VenteRepository(
             )
             comptable.contrePasser(PieceComptable(DOCUMENT_VENTE, vente.id), "Annulation vente ${vente.numero}")
             audit.enregistrer(ActionAudit.ANNULATION_VENTE, "${vente.numero} : $motifPropre")
+        }
+    }
+
+    /** Prépare la correction de [venteId] : mêmes conditions que l'annulation (caisse ouverte, sans retour). */
+    suspend fun preparerCorrection(venteId: String): VenteACorriger {
+        session.exiger(Permission.ANNULER_VENTE)
+        val vente = exigerVenteValidee(venteId)
+        if (caisseDao.getSession(vente.sessionCaisseId)?.statut != StatutSession.OUVERTE) {
+            throw RegleMetierException("La caisse de cette vente est clôturée : faites un retour.")
+        }
+        if (venteDao.compterRetoursVente(vente.id) > 0) throw RegleMetierException("Des articles ont déjà été retournés : supprimez d'abord le retour.")
+        val lignes = venteDao.lignes(vente.id).mapNotNull { l ->
+            venteDao.produitVendable(vente.pointVenteId, vente.depotId, l.produitId)
+                ?.let { it.copy(stockMilli = it.stockMilli + l.quantiteMilli) to l.quantiteMilli }
+        }
+        return VenteACorriger(vente, vente.clientId, lignes)
+    }
+
+    /**
+     * Correction d'une erreur de saisie : la vente est annulée (RG-V6 : caisse encore ouverte, sans retour) puis
+     * ressaisie dans la même opération, sous un nouveau numéro qui renvoie à l'ancienne. Renvoie l'id de la nouvelle vente.
+     */
+    suspend fun corrigerVente(venteId: String, saisie: SaisieVente, motif: String): String {
+        val motifPropre = motif.trim().ifEmpty { throw RegleMetierException("Indiquez ce qui est corrigé.") }
+        return db.withTransaction {
+            val ancienne = exigerVenteValidee(venteId)
+            annulerVente(venteId, "Correction : $motifPropre")
+            val nouvelleId = validerVente(saisie.copy(pointVenteId = ancienne.pointVenteId, corrigeDe = ancienne.id))
+            val nouvelle = venteDao.get(nouvelleId)
+            audit.enregistrer(ActionAudit.CORRECTION_VENTE, "${ancienne.numero} → ${nouvelle?.numero.orEmpty()} : $motifPropre")
+            nouvelleId
+        }
+    }
+
+    /**
+     * Suppression d'un remboursement saisi par erreur : le retour passe au statut annulé, les articles ressortent du
+     * stock, l'argent rentre de nouveau en caisse (ou le crédit du client est rétabli), l'écriture est contre-passée.
+     * Possible tant que la caisse du remboursement est ouverte ; un remboursement sur crédit reste annulable.
+     */
+    suspend fun annulerRetour(retourId: String, motif: String) {
+        val auteur = session.exiger(Permission.ANNULER_VENTE)
+        val motifPropre = motif.trim().ifEmpty { throw RegleMetierException("Indiquez le motif de la suppression.") }
+        db.withTransaction {
+            val retour = venteDao.getRetour(retourId) ?: throw RegleMetierException("Retour introuvable.")
+            if (retour.statut != StatutVente.VALIDEE) throw RegleMetierException("Ce retour est déjà supprimé.")
+            val vente = venteDao.get(retour.venteId) ?: throw RegleMetierException("Vente introuvable.")
+            val u = session.utilisateur.value ?: throw RegleMetierException("Aucun utilisateur connecté.")
+            if (!u.voitPointVente(vente.pointVenteId)) throw RegleMetierException("Ce retour appartient à un autre point de vente.")
+            val sessionCaisse = retour.sessionCaisseId?.let { id ->
+                caisseDao.getSession(id)?.takeIf { it.statut == StatutSession.OUVERTE }
+                    ?: throw RegleMetierException("La caisse de ce remboursement est clôturée : il ne peut plus être supprimé.")
+            }
+            val document = DocumentStock(DOCUMENT_RETOUR, retour.id)
+            venteDao.lignesRetour(retour.id).forEach { lr ->
+                val ligne = venteDao.ligne(lr.ligneVenteId) ?: throw RegleMetierException("Ligne de vente introuvable.")
+                // Les articles ressortent : refusé si le stock a déjà été revendu (stock négatif interdit)
+                stock.enregistrerMouvement(
+                    lr.produitId, vente.depotId, TypeMouvement.SORTIE_VENTE, -lr.quantiteMilli,
+                    document = document, motif = "Suppression ${retour.numero} (${vente.numero}) : $motifPropre", auteurId = auteur.id,
+                )
+                venteDao.modifierLigne(ligne.copy(quantiteRetourneeMilli = ligne.quantiteRetourneeMilli - lr.quantiteMilli))
+            }
+            if (sessionCaisse != null && retour.montant > 0) {
+                caisseDao.insererOperation(
+                    OperationCaisseEntity(
+                        sessionId = sessionCaisse.id,
+                        type = TypeOperationCaisse.ENCAISSEMENT,
+                        mode = retour.modeRemboursement,
+                        montant = retour.montant,
+                        documentType = DOCUMENT_RETOUR,
+                        documentId = retour.id,
+                        libelle = "Suppression retour ${retour.numero} (${vente.numero})",
+                        createdBy = auteur.id,
+                    )
+                )
+            }
+            val date = maintenant()
+            venteDao.modifierRetour(
+                retour.copy(statut = StatutVente.ANNULEE, dateAnnulation = date, annulePar = auteur.id, motifAnnulation = motifPropre)
+            )
+            comptable.contrePasser(PieceComptable(DOCUMENT_RETOUR, retour.id), "Suppression retour ${retour.numero} (${vente.numero})")
+            audit.enregistrer(ActionAudit.ANNULATION_RETOUR, "${retour.numero} (${vente.numero}) : $motifPropre")
         }
     }
 

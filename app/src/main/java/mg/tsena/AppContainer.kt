@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.CreationExtras
 import mg.tsena.appro.ApproRepository
+import mg.tsena.appro.LotApproRepository
 import mg.tsena.auth.AuditLogger
 import mg.tsena.auth.AuthRepository
 import mg.tsena.auth.SessionManager
@@ -40,6 +41,7 @@ class AppContainer(context: Context) {
     val coffreRepository = CoffreRepository(database, session, audit, comptable)
     val venteRepository = VenteRepository(database, session, audit, authRepository, stockRepository, comptable, coffreRepository)
     val financeRepository = FinanceRepository(database, session, audit, comptable, coffreRepository)
+    val lotApproRepository = LotApproRepository(database, session, audit, approRepository, financeRepository, stockRepository)
     val comptaRepository = ComptaRepository(database, session, audit, comptable)
     val creditRepository = CreditRepository(database)
     val rapportRepository = RapportRepository(database, session, creditRepository)

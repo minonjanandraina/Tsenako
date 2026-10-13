@@ -24,6 +24,7 @@ import mg.tsena.data.db.dao.FournisseurDao
 import mg.tsena.data.db.dao.InventaireDao
 import mg.tsena.data.db.dao.JournalAuditDao
 import mg.tsena.data.db.dao.LieuDao
+import mg.tsena.data.db.dao.LotApproDao
 import mg.tsena.data.db.dao.PaiementFournisseurDao
 import mg.tsena.data.db.dao.PrixPointVenteDao
 import mg.tsena.data.db.dao.ProduitDao
@@ -61,7 +62,10 @@ import mg.tsena.data.db.entity.LigneTransfertEntity
 import mg.tsena.data.db.entity.LigneVenteEntity
 import mg.tsena.data.db.entity.ModePaiement
 import mg.tsena.data.db.entity.MouvementStockEntity
+import mg.tsena.data.db.entity.EtiquetageApproEntity
+import mg.tsena.data.db.entity.LotApproEntity
 import mg.tsena.data.db.entity.OperationCaisseEntity
+import mg.tsena.data.db.entity.StatutLotAppro
 import mg.tsena.data.db.entity.OperationCoffreEntity
 import mg.tsena.data.db.entity.SourceFonds
 import mg.tsena.data.db.entity.TypeOperationCoffre
@@ -171,6 +175,12 @@ class Converters {
     fun texteVersStatutDepense(texte: String): StatutDepense = StatutDepense.valueOf(texte)
 
     @TypeConverter
+    fun statutLotApproVersTexte(valeur: StatutLotAppro): String = valeur.name
+
+    @TypeConverter
+    fun texteVersStatutLotAppro(texte: String): StatutLotAppro = StatutLotAppro.valueOf(texte)
+
+    @TypeConverter
     fun sourceFondsVersTexte(valeur: SourceFonds): String = valeur.name
 
     @TypeConverter
@@ -228,6 +238,8 @@ class Converters {
         SessionCaisseEntity::class,
         OperationCaisseEntity::class,
         OperationCoffreEntity::class,
+        LotApproEntity::class,
+        EtiquetageApproEntity::class,
         ClientEntity::class,
         PrixPointVenteEntity::class,
         VenteEntity::class,
@@ -267,6 +279,7 @@ abstract class TsenaDatabase : RoomDatabase() {
     abstract fun transfertDao(): TransfertDao
     abstract fun caisseDao(): CaisseDao
     abstract fun coffreDao(): CoffreDao
+    abstract fun lotApproDao(): LotApproDao
     abstract fun clientDao(): ClientDao
     abstract fun prixPointVenteDao(): PrixPointVenteDao
     abstract fun venteDao(): VenteDao

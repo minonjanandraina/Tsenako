@@ -133,6 +133,7 @@ fun entreesModule(module: Module, u: UtilisateurConnecte, nbAlertes: Int, nbEnTr
             }
         Module.APPRO -> si(
             Permission.GERER_APPRO,
+            EntreeModule("Appros", "Tournée d'achats avec budget, étiquetage et envoi", Routes.LOTS_APPRO) { painterResource(R.drawable.ic_appro) },
             EntreeModule("Commandes", "Commander aux fournisseurs", Routes.COMMANDES) { painterResource(R.drawable.ic_commande) },
             EntreeModule("Réceptions", "Entrées de marchandise, achats", Routes.RECEPTIONS) { painterResource(R.drawable.ic_reception) },
             EntreeModule(

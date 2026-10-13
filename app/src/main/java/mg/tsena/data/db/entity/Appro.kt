@@ -115,7 +115,7 @@ data class LigneCommandeEntity(
         ForeignKey(entity = FournisseurEntity::class, parentColumns = ["id"], childColumns = ["fournisseur_id"]),
         ForeignKey(entity = DepotEntity::class, parentColumns = ["id"], childColumns = ["depot_id"]),
     ],
-    indices = [Index("commande_id"), Index("fournisseur_id"), Index("depot_id"), Index(value = ["numero"], unique = true)],
+    indices = [Index("commande_id"), Index("fournisseur_id"), Index("depot_id"), Index("lot_id"), Index(value = ["numero"], unique = true)],
 )
 data class ReceptionEntity(
     @PrimaryKey val id: String = nouvelId(),
@@ -126,6 +126,8 @@ data class ReceptionEntity(
     @ColumnInfo(name = "depot_id") val depotId: String,
     val date: Long = maintenant(),
     @ColumnInfo(name = "montant_total") val montantTotal: Long,
+    /** Appro dont cet achat fait partie (lot_appro) */
+    @ColumnInfo(name = "lot_id") val lotId: String? = null,
     /** Référence de la facture ou du bon de livraison du fournisseur */
     val reference: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long = maintenant(),

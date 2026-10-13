@@ -168,6 +168,8 @@ data class VenteEntity(
     @ColumnInfo(name = "date_annulation") val dateAnnulation: Long? = null,
     @ColumnInfo(name = "annulee_par") val annuleePar: String? = null,
     @ColumnInfo(name = "motif_annulation") val motifAnnulation: String? = null,
+    /** Vente annulée que celle-ci corrige (correction d'une erreur de saisie) */
+    @ColumnInfo(name = "corrige_de") val corrigeDe: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long = maintenant(),
     @ColumnInfo(name = "updated_at") val updatedAt: Long = createdAt,
     @ColumnInfo(name = "created_by") val createdBy: String? = null,
@@ -226,6 +228,11 @@ data class RetourVenteEntity(
     val montant: Long,
     @ColumnInfo(name = "mode_remboursement") val modeRemboursement: ModePaiement,
     @ColumnInfo(name = "session_caisse_id") val sessionCaisseId: String? = null,
+    /** ANNULEE : retour supprimé par erreur de saisie ; il ne compte plus nulle part */
+    val statut: StatutVente = StatutVente.VALIDEE,
+    @ColumnInfo(name = "date_annulation") val dateAnnulation: Long? = null,
+    @ColumnInfo(name = "annule_par") val annulePar: String? = null,
+    @ColumnInfo(name = "motif_annulation") val motifAnnulation: String? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long = maintenant(),
     @ColumnInfo(name = "created_by") val createdBy: String? = null,
 )

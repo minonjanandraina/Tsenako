@@ -283,6 +283,7 @@ class ApproRepository(
         depotId: String,
         reference: String,
         lignes: List<LigneAchat>,
+        lotId: String? = null,
     ): String {
         val auteur = session.exiger(Permission.GERER_APPRO)
         return db.withTransaction {
@@ -300,6 +301,7 @@ class ApproRepository(
                 fournisseurId = fournisseur.id,
                 depotId = depot.id,
                 montantTotal = lignes.sumOf { it.montant },
+                lotId = lotId,
                 reference = reference.trim().ifEmpty { null },
                 createdBy = auteur.id,
             )
