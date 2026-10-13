@@ -139,9 +139,9 @@ class CaisseViewModel(private val ventes: VenteRepository) : ViewModel() {
         executer {
             val ecart = ventes.cloturerCaisse(s.session.id, compte)
             message = when {
-                ecart == 0L -> "Caisse clôturée, sans écart."
-                ecart > 0 -> "Caisse clôturée. Excédent de ${Montant.formater(ecart)}."
-                else -> "Caisse clôturée. Manque de ${Montant.formater(-ecart)}."
+                ecart == 0L -> "Caisse clôturée, sans écart. Versée au coffre."
+                ecart > 0 -> "Caisse clôturée et versée au coffre. Excédent de ${Montant.formater(ecart)}."
+                else -> "Caisse clôturée et versée au coffre. Manque de ${Montant.formater(-ecart)}."
             }
         }
     }
@@ -328,7 +328,8 @@ fun CaisseScreen(
     when (vm.dialogue) {
         CaisseViewModel.Dialogue.OUVRIR -> SaisieMontantDialog(
             titre = "Ouvrir la caisse",
-            explication = "Comptez les espèces présentes dans la caisse.",
+            explication = "Le fond de caisse est pris dans le coffre. S'il n'y a pas assez d'espèces au coffre, " +
+                "la différence est comptée comme un apport du propriétaire.",
             libelle = "Fond de caisse (Ar)",
             erreur = vm.erreur,
             avecLibelle = false,
@@ -350,6 +351,7 @@ fun CaisseScreen(
         CaisseViewModel.Dialogue.CLOTURER -> SaisieMontantDialog(
             titre = "Clôturer la caisse",
             explication = "Comptez les espèces présentes dans la caisse. Montant attendu : ${Montant.formater(t?.soldeEspeces ?: 0)}. " +
+                "Les espèces comptées et le mobile money du jour sont versés au coffre. " +
                 "Après la clôture, plus aucune vente n'est possible sur cette session.",
             libelle = "Espèces comptées (Ar)",
             erreur = vm.erreur,

@@ -256,7 +256,7 @@ fun ClientScreen(
                     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Crédit dû : ${Montant.formater(c?.creditDu ?: 0)}")
                         ChampTexte(montant, { montant = it }, "Montant reçu (Ar)", Modifier.fillMaxWidth(), KeyboardType.Number)
-                        ChoixReglement(mode, { mode = it }, caisses, pvEffectif) { pointVenteId = it }
+                        ChoixReglement(mode, { mode = it }, caisses, pvEffectif, { pointVenteId = it })
                         ChampTexte(reference, { reference = it }, "Référence (facultatif)", Modifier.fillMaxWidth())
                         vm.erreur?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     }

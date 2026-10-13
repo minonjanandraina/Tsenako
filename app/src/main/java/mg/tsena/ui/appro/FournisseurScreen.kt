@@ -57,6 +57,8 @@ import mg.tsena.domain.Telephone
 import mg.tsena.domain.formaterDateHeure
 import mg.tsena.domain.maintenant
 import mg.tsena.finance.Echeances
+import mg.tsena.data.db.entity.SourceFonds
+import mg.tsena.finance.CoffreRepository
 import mg.tsena.finance.FinanceRepository
 import mg.tsena.ui.common.ChampTexte
 import mg.tsena.ui.common.Selecteur
@@ -66,6 +68,7 @@ class FournisseurViewModel(
     private val fournisseurId: String,
     private val appro: ApproRepository,
     private val finance: FinanceRepository,
+    coffre: CoffreRepository,
 ) : ViewModel() {
     val fournisseur: StateFlow<FournisseurAvecSolde?> = appro.observerFournisseurs()
         .map { liste -> liste.firstOrNull { it.fournisseur.id == fournisseurId } }
@@ -76,6 +79,10 @@ class FournisseurViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val caisses: StateFlow<List<SessionAvecDetails>> = finance.observerCaissesOuvertes()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val soldesCoffre: StateFlow<Map<ModePaiement, Long>> = coffre.observerSoldes()
+        .map { liste -> liste.associate { it.mode to it.solde } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     enum class Dialogue { MODIFIER, PAYER }
 
@@ -111,11 +118,11 @@ class FournisseurViewModel(
         executer { appro.enregistrerFournisseur(fournisseurId, nom, telephone, adresse, nif, jours, actif) }
     }
 
-    fun enregistrerPaiement(montantTexte: String, mode: ModePaiement, pointVenteId: String?, reference: String) {
+    fun enregistrerPaiement(montantTexte: String, mode: ModePaiement, pointVenteId: String?, reference: String, source: SourceFonds) {
         val montant = Montant.parser(montantTexte) ?: run { erreur = "Montant invalide."; return }
         val receptionId = receptionAPayer?.reception?.id
         executer {
-            finance.payerFournisseur(fournisseurId, receptionId, montant, mode, pointVenteId, reference)
+            finance.payerFournisseur(fournisseurId, receptionId, montant, mode, pointVenteId, reference, source)
             message = "Paiement de ${Montant.formater(montant)} enregistré."
         }
     }
@@ -134,7 +141,7 @@ class FournisseurViewModel(
 
     companion object {
         fun factory(fournisseurId: String) = viewModelFactory {
-            initializer { FournisseurViewModel(fournisseurId, container.approRepository, container.financeRepository) }
+            initializer { FournisseurViewModel(fournisseurId, container.approRepository, container.financeRepository, container.coffreRepository) }
         }
     }
 }
@@ -152,6 +159,7 @@ fun FournisseurScreen(
     val receptions by vm.receptions.collectAsStateWithLifecycle()
     val paiements by vm.paiements.collectAsStateWithLifecycle()
     val caisses by vm.caisses.collectAsStateWithLifecycle()
+    val soldesCoffre by vm.soldesCoffre.collectAsStateWithLifecycle()
     val f = fournisseur
     val maintenant = maintenant()
     val aPayer = receptions.filter { it.reste > 0 }
@@ -249,6 +257,7 @@ fun FournisseurScreen(
             receptions = aPayer,
             receptionInitiale = vm.receptionAPayer,
             caisses = caisses,
+            soldesCoffre = soldesCoffre,
             erreur = vm.erreur,
             onReception = { vm.payer(it) },
             onValider = vm::enregistrerPaiement,
@@ -264,15 +273,17 @@ private fun PaiementFournisseurDialog(
     receptions: List<ReceptionAPayer>,
     receptionInitiale: ReceptionAPayer?,
     caisses: List<SessionAvecDetails>,
+    soldesCoffre: Map<ModePaiement, Long>,
     erreur: String?,
     onReception: (ReceptionAPayer?) -> Unit,
-    onValider: (montant: String, mode: ModePaiement, pointVenteId: String?, reference: String) -> Unit,
+    onValider: (montant: String, mode: ModePaiement, pointVenteId: String?, reference: String, source: SourceFonds) -> Unit,
     onAnnuler: () -> Unit,
 ) {
     val maximum = receptionInitiale?.reste ?: soldeDu
     var montant by rememberSaveable(receptionInitiale?.reception?.id) { mutableStateOf(maximum.toString()) }
     var mode by rememberSaveable { mutableStateOf(ModePaiement.ESPECES) }
     var pointVenteId by rememberSaveable { mutableStateOf<String?>(null) }
+    var source by rememberSaveable { mutableStateOf(SourceFonds.CAISSE) }
     var reference by rememberSaveable { mutableStateOf("") }
     val pvEffectif = pointVenteId ?: caisses.firstOrNull()?.pointVenteId
     val options: List<ReceptionAPayer?> = receptions + listOf(null)
@@ -292,12 +303,15 @@ private fun PaiementFournisseurDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 ChampTexte(montant, { montant = it }, "Montant (au plus ${Montant.formater(maximum)})", Modifier.fillMaxWidth(), KeyboardType.Number)
-                ChoixReglement(mode, { mode = it }, caisses, pvEffectif) { pointVenteId = it }
+                ChoixReglement(
+                    mode, { mode = it }, caisses, pvEffectif, { pointVenteId = it },
+                    source = source, onSource = { source = it }, soldesCoffre = soldesCoffre,
+                )
                 ChampTexte(reference, { reference = it }, "Référence (facultatif)", Modifier.fillMaxWidth())
                 erreur?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = { TextButton(onClick = { onValider(montant, mode, pvEffectif, reference) }) { Text("Payer") } },
+        confirmButton = { TextButton(onClick = { onValider(montant, mode, pvEffectif, reference, source) }) { Text("Payer") } },
         dismissButton = { TextButton(onClick = onAnnuler) { Text("Annuler") } },
     )
 }

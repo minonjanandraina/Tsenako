@@ -1,6 +1,7 @@
 package mg.tsena.compta
 
 import mg.tsena.data.db.entity.ModePaiement
+import mg.tsena.data.db.entity.SourceFonds
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -11,7 +12,7 @@ class ReglesComptablesTest {
     fun `vente mixte especes et credit equilibree`() {
         val lignes = ReglesComptables.vente(10_000, listOf(ModePaiement.ESPECES to 6_000L, ModePaiement.CREDIT to 4_000L), "c1")
         assertTrue(ReglesComptables.equilibree(lignes))
-        assertEquals(6_000L, lignes.first { it.compte == "53" }.debit)
+        assertEquals(6_000L, lignes.first { it.compte == "531" }.debit)
         val client = lignes.first { it.compte == "411" }
         assertEquals(4_000L, client.debit)
         assertEquals("c1", client.tiersId)
@@ -71,5 +72,39 @@ class ReglesComptablesTest {
         val (debut, fin) = ReglesComptables.exercice(LocalDate.of(2026, 3, 15), 7)
         assertEquals(LocalDate.of(2025, 7, 1), debut)
         assertEquals(LocalDate.of(2026, 6, 30), fin)
+    }
+
+    @Test
+    fun `versement a la cloture de la caisse vers le coffre`() {
+        val lignes = ReglesComptables.versementCoffre(80_000)
+        assertTrue(ReglesComptables.equilibree(lignes))
+        assertEquals(80_000L, lignes.first { it.compte == "532" }.debit)
+        assertEquals(80_000L, lignes.first { it.compte == "531" }.credit)
+        assertTrue(ReglesComptables.versementCoffre(0).isEmpty())
+    }
+
+    @Test
+    fun `fond de caisse pris dans le coffre`() {
+        val lignes = ReglesComptables.fondCaisse(20_000)
+        assertEquals(20_000L, lignes.first { it.compte == "531" }.debit)
+        assertEquals(20_000L, lignes.first { it.compte == "532" }.credit)
+    }
+
+    @Test
+    fun `depense payee depuis le coffre credite le compte coffre`() {
+        val coffre = ReglesComptables.depense(15_000, "613", ModePaiement.ESPECES, SourceFonds.COFFRE)
+        assertEquals(15_000L, coffre.first { it.compte == "532" }.credit)
+        val caisse = ReglesComptables.depense(15_000, "613", ModePaiement.ESPECES, SourceFonds.CAISSE)
+        assertEquals(15_000L, caisse.first { it.compte == "531" }.credit)
+        // Le mobile money reste au compte 517 quelle que soit la source
+        val mobile = ReglesComptables.depense(15_000, "613", ModePaiement.MOBILE_MONEY, SourceFonds.COFFRE)
+        assertEquals(15_000L, mobile.first { it.compte == "517" }.credit)
+    }
+
+    @Test
+    fun `paiement fournisseur depuis le coffre`() {
+        val lignes = ReglesComptables.paiementFournisseur(40_000, ModePaiement.ESPECES, "f1", SourceFonds.COFFRE)
+        assertTrue(ReglesComptables.equilibree(lignes))
+        assertEquals(40_000L, lignes.first { it.compte == "532" }.credit)
     }
 }

@@ -12,6 +12,8 @@ enum class Permission {
     VENDRE,
     GERER_CAISSE,
     GERER_DEPENSES,
+    /** Apports et retraits du coffre */
+    GERER_COFFRE,
     VOIR_COMPTABILITE,
     VOIR_TOUS_POINTS_VENTE,
     /** RG-V5 : remise au-delà du seuil du commerce */
@@ -36,6 +38,7 @@ enum class Role(val libelle: String, val permissions: Set<Permission>) {
             Permission.VENDRE,
             Permission.GERER_CAISSE,
             Permission.GERER_DEPENSES,
+            Permission.GERER_COFFRE,
             Permission.VOIR_COMPTABILITE,
             Permission.VOIR_TOUS_POINTS_VENTE,
             Permission.ACCORDER_REMISE,

@@ -2,6 +2,7 @@ package mg.tsena.compta
 
 import mg.tsena.data.db.entity.Journal
 import mg.tsena.data.db.entity.ModePaiement
+import mg.tsena.data.db.entity.SourceFonds
 import java.time.LocalDate
 
 /** Ligne d'écriture à passer : un compte, un débit ou un crédit, et le tiers éventuel. */
@@ -27,7 +28,10 @@ object ReglesComptables {
     const val CLIENTS = "411"
     const val BANQUE = "512"
     const val MOBILE_MONEY = "517"
-    const val CAISSE = "53"
+    /** Espèces des caisses des points de vente (sous-compte de 53) */
+    const val CAISSE = "531"
+    /** Espèces du coffre, où va l'argent à la clôture de caisse (sous-compte de 53) */
+    const val COFFRE = "532"
     const val VARIATION_STOCK = "6037"
     const val ACHATS = "607"
     const val CHARGES_DIVERSES = "658"
@@ -37,9 +41,9 @@ object ReglesComptables {
     const val TIERS_CLIENT = "CLIENT"
     const val TIERS_FOURNISSEUR = "FOURNISSEUR"
 
-    /** Compte de trésorerie (ou client pour le crédit) d'un mode de paiement. */
-    fun compteReglement(mode: ModePaiement): String = when (mode) {
-        ModePaiement.ESPECES -> CAISSE
+    /** Compte de trésorerie (ou client pour le crédit) d'un mode de paiement ; [source] ne joue que pour les espèces. */
+    fun compteReglement(mode: ModePaiement, source: SourceFonds = SourceFonds.CAISSE): String = when (mode) {
+        ModePaiement.ESPECES -> if (source == SourceFonds.COFFRE) COFFRE else CAISSE
         ModePaiement.MOBILE_MONEY -> MOBILE_MONEY
         ModePaiement.CARTE, ModePaiement.BANQUE -> BANQUE
         ModePaiement.CREDIT -> CLIENTS
@@ -82,12 +86,17 @@ object ReglesComptables {
         nettoyer(listOf(fournisseur(debit = montant, fournisseurId = fournisseurId), Imputation(ACHATS, credit = montant)))
 
     /** Paiement fournisseur : débit 401 ; crédit trésorerie. */
-    fun paiementFournisseur(montant: Long, mode: ModePaiement, fournisseurId: String): List<Imputation> =
-        nettoyer(listOf(fournisseur(debit = montant, fournisseurId = fournisseurId), reglement(mode, credit = montant)))
+    fun paiementFournisseur(
+        montant: Long,
+        mode: ModePaiement,
+        fournisseurId: String,
+        source: SourceFonds = SourceFonds.CAISSE,
+    ): List<Imputation> =
+        nettoyer(listOf(fournisseur(debit = montant, fournisseurId = fournisseurId), reglement(mode, credit = montant, source = source)))
 
     /** Dépense : débit du compte de charge de la catégorie ; crédit trésorerie. */
-    fun depense(montant: Long, compteCharge: String, mode: ModePaiement): List<Imputation> =
-        nettoyer(listOf(Imputation(compteCharge, debit = montant), reglement(mode, credit = montant)))
+    fun depense(montant: Long, compteCharge: String, mode: ModePaiement, source: SourceFonds = SourceFonds.CAISSE): List<Imputation> =
+        nettoyer(listOf(Imputation(compteCharge, debit = montant), reglement(mode, credit = montant, source = source)))
 
     /** Écart de caisse (compté − théorique) : négatif 658 / 53 ; positif 53 / 758. */
     fun ecartCaisse(ecart: Long): List<Imputation> = when {
@@ -103,6 +112,22 @@ object ReglesComptables {
     /** Retrait du propriétaire : 108 / 53. */
     fun retrait(montant: Long): List<Imputation> =
         nettoyer(listOf(Imputation(EXPLOITANT, debit = montant), Imputation(CAISSE, credit = montant)))
+
+    /** Clôture de caisse : les espèces comptées passent de la caisse au coffre (532 / 531). */
+    fun versementCoffre(montant: Long): List<Imputation> =
+        nettoyer(listOf(Imputation(COFFRE, debit = montant), Imputation(CAISSE, credit = montant)))
+
+    /** Ouverture de caisse : le fond de caisse sort du coffre (531 / 532). */
+    fun fondCaisse(montant: Long): List<Imputation> =
+        nettoyer(listOf(Imputation(CAISSE, debit = montant), Imputation(COFFRE, credit = montant)))
+
+    /** Apport du propriétaire directement au coffre : 532 (ou 517 en mobile money) / 108. */
+    fun apportCoffre(montant: Long, mode: ModePaiement = ModePaiement.ESPECES): List<Imputation> =
+        nettoyer(listOf(reglement(mode, debit = montant, source = SourceFonds.COFFRE), Imputation(EXPLOITANT, credit = montant)))
+
+    /** Retrait du propriétaire depuis le coffre : 108 / 532 (ou 517 en mobile money). */
+    fun retraitCoffre(montant: Long, mode: ModePaiement = ModePaiement.ESPECES): List<Imputation> =
+        nettoyer(listOf(Imputation(EXPLOITANT, debit = montant), reglement(mode, credit = montant, source = SourceFonds.COFFRE)))
 
     /** Stock de départ apporté au commerce : 37 / 101. */
     fun stockInitial(valeur: Long): List<Imputation> =
@@ -148,8 +173,14 @@ object ReglesComptables {
         return debut to debut.plusYears(1).minusDays(1)
     }
 
-    private fun reglement(mode: ModePaiement, debit: Long = 0, credit: Long = 0, clientId: String? = null): Imputation {
-        val compte = compteReglement(mode)
+    private fun reglement(
+        mode: ModePaiement,
+        debit: Long = 0,
+        credit: Long = 0,
+        clientId: String? = null,
+        source: SourceFonds = SourceFonds.CAISSE,
+    ): Imputation {
+        val compte = compteReglement(mode, source)
         return if (compte == CLIENTS) {
             Imputation(compte, debit, credit, TIERS_CLIENT, clientId)
         } else {

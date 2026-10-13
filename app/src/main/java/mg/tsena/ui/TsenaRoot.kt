@@ -26,6 +26,7 @@ import mg.tsena.ui.appro.ConversionsScreen
 import mg.tsena.ui.appro.FournisseurScreen
 import mg.tsena.ui.appro.FournisseursScreen
 import mg.tsena.ui.finance.CategoriesDepenseScreen
+import mg.tsena.ui.finance.CoffreScreen
 import mg.tsena.ui.finance.DepenseFormScreen
 import mg.tsena.ui.finance.DepensesScreen
 import mg.tsena.ui.vente.ClientScreen
@@ -101,6 +102,7 @@ object Routes {
     const val FOURNISSEUR = "fournisseurs/{id}"
     const val CLIENT = "clients/{id}"
     const val DEPENSES = "depenses"
+    const val COFFRE = "coffre"
     const val DEPENSE_FORM = "depense-saisie"
     const val CATEGORIES_DEPENSES = "depenses/categories"
     const val COMPTABILITE = "comptabilite"
@@ -374,6 +376,7 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
             )
         }
         composable(Routes.DEPENSE_FORM) { DepenseFormScreen(onTermine = { nav.popBackStack() }) }
+        composable(Routes.COFFRE) { CoffreScreen(onRetour = { nav.popBackStack() }) }
         composable(Routes.CATEGORIES_DEPENSES) { CategoriesDepenseScreen(onRetour = { nav.popBackStack() }) }
         composable(Routes.COMPTABILITE) {
             ComptabiliteScreen(

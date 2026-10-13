@@ -48,6 +48,8 @@ data class DepenseEntity(
     val date: Long = maintenant(),
     @ColumnInfo(name = "mode_paiement") val modePaiement: ModePaiement,
     @ColumnInfo(name = "session_caisse_id") val sessionCaisseId: String? = null,
+    /** Caisse ou coffre ; sans effet pour un règlement hors caisse (banque) */
+    val source: SourceFonds = SourceFonds.CAISSE,
     /** Photo du justificatif, relative au dossier photos */
     @ColumnInfo(name = "justificatif_chemin") val justificatifChemin: String? = null,
     val description: String,

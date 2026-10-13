@@ -19,10 +19,12 @@ import mg.tsena.data.db.entity.OperationCaisseEntity
 import mg.tsena.data.db.entity.PaiementFournisseurEntity
 import mg.tsena.data.db.entity.ReceptionAPayer
 import mg.tsena.data.db.entity.SessionAvecDetails
+import mg.tsena.data.db.entity.SourceFonds
 import mg.tsena.data.db.entity.StatutDepense
 import mg.tsena.data.db.entity.StatutSession
 import mg.tsena.data.db.entity.TotalCategorie
 import mg.tsena.data.db.entity.TypeOperationCaisse
+import mg.tsena.data.db.entity.TypeOperationCoffre
 import mg.tsena.data.db.entity.VenteAvecDetails
 import mg.tsena.domain.Montant
 import mg.tsena.domain.Permission
@@ -40,6 +42,7 @@ class FinanceRepository(
     private val session: SessionManager,
     private val audit: AuditLogger,
     private val comptable: Comptable,
+    private val coffre: CoffreRepository,
 ) {
     private val categorieDao = db.categorieDepenseDao()
     private val depenseDao = db.depenseDao()
@@ -115,6 +118,7 @@ class FinanceRepository(
         mode: ModePaiement,
         pointVenteId: String?,
         justificatif: String?,
+        source: SourceFonds = SourceFonds.CAISSE,
     ): String {
         val auteur = session.exiger(Permission.GERER_DEPENSES)
         if (montant <= 0) throw RegleMetierException("Le montant doit être supérieur à zéro.")
@@ -132,18 +136,19 @@ class FinanceRepository(
                 pointVenteId = pointVenteId,
                 montant = montant,
                 modePaiement = mode,
+                source = sourceEffective(mode, source),
                 justificatifChemin = justificatif,
                 description = texte,
                 createdBy = auteur.id,
             )
-            val sessionId = mouvementCaisse(
-                pointVenteId, mode, TypeOperationCaisse.DECAISSEMENT, montant,
+            val sessionId = sortirFonds(
+                depense.source, pointVenteId, mode, montant,
                 DOCUMENT_DEPENSE, depense.id, "Dépense ${depense.numero} : ${categorie.nom}", auteur.id,
             )
             depenseDao.inserer(depense.copy(sessionCaisseId = sessionId))
             comptable.passer(
                 ReglesComptables.journalReglement(mode), "Dépense ${depense.numero} : ${categorie.nom}",
-                ReglesComptables.depense(montant, categorie.compteNumero, mode), PieceComptable(DOCUMENT_DEPENSE, depense.id),
+                ReglesComptables.depense(montant, categorie.compteNumero, mode, depense.source), PieceComptable(DOCUMENT_DEPENSE, depense.id),
             )
             audit.enregistrer(ActionAudit.DEPENSE, "${depense.numero} : ${categorie.nom}, ${Montant.formater(montant)}")
             depense.id
@@ -157,6 +162,12 @@ class FinanceRepository(
         db.withTransaction {
             val depense = depenseDao.get(id) ?: throw RegleMetierException("Dépense introuvable.")
             if (depense.statut == StatutDepense.ANNULEE) throw RegleMetierException("Cette dépense est déjà annulée.")
+            if (depense.source == SourceFonds.COFFRE) {
+                coffre.entrer(
+                    depense.modePaiement, depense.montant, TypeOperationCoffre.REMBOURSEMENT,
+                    "Annulation dépense ${depense.numero}", auteur.id, null, DOCUMENT_DEPENSE, depense.id,
+                )
+            }
             depense.sessionCaisseId?.let { sessionId ->
                 val s = caisseDao.getSession(sessionId)
                 if (s?.statut != StatutSession.OUVERTE) {
@@ -204,6 +215,7 @@ class FinanceRepository(
         mode: ModePaiement,
         pointVenteId: String?,
         reference: String,
+        source: SourceFonds = SourceFonds.CAISSE,
     ) {
         val auteur = session.exiger(Permission.GERER_DEPENSES)
         if (montant <= 0) throw RegleMetierException("Le montant doit être supérieur à zéro.")
@@ -227,14 +239,15 @@ class FinanceRepository(
                 reference = reference.trim().ifEmpty { null },
                 createdBy = auteur.id,
             )
-            val sessionId = mouvementCaisse(
-                pointVenteId, mode, TypeOperationCaisse.DECAISSEMENT, montant,
+            val sourceReelle = sourceEffective(mode, source)
+            val sessionId = sortirFonds(
+                sourceReelle, pointVenteId, mode, montant,
                 DOCUMENT_PAIEMENT_FOURNISSEUR, paiement.id, "Paiement ${fournisseur.nom} (${paiement.numero})", auteur.id,
             )
             paiementDao.inserer(paiement.copy(sessionCaisseId = sessionId))
             comptable.passer(
                 ReglesComptables.journalReglement(mode), "Paiement ${fournisseur.nom} (${paiement.numero})",
-                ReglesComptables.paiementFournisseur(montant, mode, fournisseurId), PieceComptable(DOCUMENT_PAIEMENT_FOURNISSEUR, paiement.id),
+                ReglesComptables.paiementFournisseur(montant, mode, fournisseurId, sourceReelle), PieceComptable(DOCUMENT_PAIEMENT_FOURNISSEUR, paiement.id),
             )
             audit.enregistrer(ActionAudit.PAIEMENT_FOURNISSEUR, "${paiement.numero} : ${fournisseur.nom}, ${Montant.formater(montant)}")
         }
@@ -275,6 +288,31 @@ class FinanceRepository(
         }
     }
 
+    /** Le coffre ne concerne que les espèces et le mobile money ; un règlement hors caisse n'a pas de source. */
+    private fun sourceEffective(mode: ModePaiement, source: SourceFonds) =
+        if (mode == ModePaiement.BANQUE) SourceFonds.CAISSE else source
+
+    /**
+     * Sortie d'argent d'une dépense ou d'un paiement : du coffre (refusée si son solde est insuffisant) ou de la
+     * caisse ouverte. Renvoie l'id de la session de caisse utilisée, null pour le coffre et le hors caisse.
+     */
+    private suspend fun sortirFonds(
+        source: SourceFonds,
+        pointVenteId: String?,
+        mode: ModePaiement,
+        montant: Long,
+        documentType: String,
+        documentId: String,
+        libelle: String,
+        auteurId: String,
+    ): String? {
+        if (source == SourceFonds.COFFRE) {
+            coffre.sortir(mode, montant, TypeOperationCoffre.DECAISSEMENT, libelle, auteurId, documentType, documentId)
+            return null
+        }
+        return mouvementCaisse(pointVenteId, mode, TypeOperationCaisse.DECAISSEMENT, montant, documentType, documentId, libelle, auteurId)
+    }
+
     /**
      * Opération dans la caisse ouverte de [pointVenteId] pour un règlement en espèces ou mobile money ;
      * aucune pour la banque / hors caisse. Une sortie d'espèces ne peut pas dépasser les espèces en caisse.
@@ -297,12 +335,16 @@ class FinanceRepository(
         if (!u.voitPointVente(pv.id)) throw RegleMetierException("Vous n'êtes pas rattaché au point de vente « ${pv.nom} ».")
         val sessionCaisse = caisseDao.getParPointVente(pv.id)?.let { caisseDao.getSessionOuverte(it.id) }
             ?: throw RegleMetierException("La caisse de « ${pv.nom} » est fermée.")
-        if (mode == ModePaiement.ESPECES && !type.entree) {
-            val especes = CalculsVente.soldeTheorique(
-                sessionCaisse.fondInitial,
-                caisseDao.operations(sessionCaisse.id).filter { it.mode == ModePaiement.ESPECES }.map { it.type to it.montant },
+        if (!type.entree) {
+            // Le fond de caisse ne compte que pour les espèces ; le mobile money part de ce qui a été encaissé
+            val fond = if (mode == ModePaiement.ESPECES) sessionCaisse.fondInitial else 0
+            val disponible = CalculsVente.soldeTheorique(
+                fond,
+                caisseDao.operations(sessionCaisse.id).filter { it.mode == mode }.map { it.type to it.montant },
             )
-            if (montant > especes) throw RegleMetierException("Il n'y a que ${Montant.formater(especes)} en espèces dans la caisse.")
+            if (montant > disponible) {
+                throw RegleMetierException("Il n'y a que ${Montant.formater(disponible)} (${mode.libelle.lowercase()}) dans la caisse.")
+            }
         }
         caisseDao.insererOperation(
             OperationCaisseEntity(

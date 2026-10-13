@@ -16,6 +16,7 @@ import mg.tsena.compta.Comptable
 import mg.tsena.credit.CreditRepository
 import mg.tsena.data.db.TsenaDatabase
 import mg.tsena.erreurs.JournalErreurs
+import mg.tsena.finance.CoffreRepository
 import mg.tsena.finance.FinanceRepository
 import mg.tsena.lieux.LieuRepository
 import mg.tsena.rapports.RapportRepository
@@ -36,8 +37,9 @@ class AppContainer(context: Context) {
     val comptable = Comptable(database, session)
     val stockRepository = StockRepository(database, session, audit, comptable)
     val approRepository = ApproRepository(database, session, audit, stockRepository, comptable)
-    val venteRepository = VenteRepository(database, session, audit, authRepository, stockRepository, comptable)
-    val financeRepository = FinanceRepository(database, session, audit, comptable)
+    val coffreRepository = CoffreRepository(database, session, audit, comptable)
+    val venteRepository = VenteRepository(database, session, audit, authRepository, stockRepository, comptable, coffreRepository)
+    val financeRepository = FinanceRepository(database, session, audit, comptable, coffreRepository)
     val comptaRepository = ComptaRepository(database, session, audit, comptable)
     val creditRepository = CreditRepository(database)
     val rapportRepository = RapportRepository(database, session, creditRepository)

@@ -11,6 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import mg.tsena.data.db.dao.CaisseDao
 import mg.tsena.data.db.dao.CategorieDepenseDao
 import mg.tsena.data.db.dao.ClientDao
+import mg.tsena.data.db.dao.CoffreDao
 import mg.tsena.data.db.dao.CommandeDao
 import mg.tsena.data.db.dao.CommerceDao
 import mg.tsena.data.db.dao.CompteDao
@@ -61,6 +62,9 @@ import mg.tsena.data.db.entity.LigneVenteEntity
 import mg.tsena.data.db.entity.ModePaiement
 import mg.tsena.data.db.entity.MouvementStockEntity
 import mg.tsena.data.db.entity.OperationCaisseEntity
+import mg.tsena.data.db.entity.OperationCoffreEntity
+import mg.tsena.data.db.entity.SourceFonds
+import mg.tsena.data.db.entity.TypeOperationCoffre
 import mg.tsena.data.db.entity.PaiementFournisseurEntity
 import mg.tsena.data.db.entity.PaiementVenteEntity
 import mg.tsena.data.db.entity.PointVenteEntity
@@ -167,6 +171,18 @@ class Converters {
     fun texteVersStatutDepense(texte: String): StatutDepense = StatutDepense.valueOf(texte)
 
     @TypeConverter
+    fun sourceFondsVersTexte(valeur: SourceFonds): String = valeur.name
+
+    @TypeConverter
+    fun texteVersSourceFonds(texte: String): SourceFonds = SourceFonds.valueOf(texte)
+
+    @TypeConverter
+    fun typeOperationCoffreVersTexte(valeur: TypeOperationCoffre): String = valeur.name
+
+    @TypeConverter
+    fun texteVersTypeOperationCoffre(texte: String): TypeOperationCoffre = TypeOperationCoffre.valueOf(texte)
+
+    @TypeConverter
     fun statutExerciceVersTexte(valeur: StatutExercice): String = valeur.name
 
     @TypeConverter
@@ -211,6 +227,7 @@ class Converters {
         CaisseEntity::class,
         SessionCaisseEntity::class,
         OperationCaisseEntity::class,
+        OperationCoffreEntity::class,
         ClientEntity::class,
         PrixPointVenteEntity::class,
         VenteEntity::class,
@@ -249,6 +266,7 @@ abstract class TsenaDatabase : RoomDatabase() {
     abstract fun receptionDao(): ReceptionDao
     abstract fun transfertDao(): TransfertDao
     abstract fun caisseDao(): CaisseDao
+    abstract fun coffreDao(): CoffreDao
     abstract fun clientDao(): ClientDao
     abstract fun prixPointVenteDao(): PrixPointVenteDao
     abstract fun venteDao(): VenteDao
@@ -327,7 +345,8 @@ abstract class TsenaDatabase : RoomDatabase() {
             Triple("421", "Personnel, rémunérations dues", TypeCompte.PASSIF),
             Triple("512", "Banques", TypeCompte.ACTIF),
             Triple("517", "Mobile money (autres organismes financiers)", TypeCompte.ACTIF),
-            Triple("53", "Caisse", TypeCompte.ACTIF),
+            Triple("531", "Caisse des points de vente", TypeCompte.ACTIF),
+            Triple("532", "Coffre", TypeCompte.ACTIF),
             Triple("6037", "Variation des stocks de marchandises", TypeCompte.CHARGE),
             Triple("6061", "Fournitures non stockables (eau, énergie)", TypeCompte.CHARGE),
             Triple("6064", "Fournitures administratives", TypeCompte.CHARGE),

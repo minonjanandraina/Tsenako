@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Tsena — Application mobile de gestion pour petits marchands
 
 ## 1. Objectif
@@ -105,6 +109,9 @@ exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jama
   solde_compte, ecart, statut (`OUVERTE`, `FERMEE`)
 - **operation_caisse** : session_id, type (`ENCAISSEMENT`, `DECAISSEMENT`, `APPORT`, `RETRAIT`), mode,
   montant, document_type, document_id, libelle
+
+- **operation_coffre** : type (`VERSEMENT_CAISSE`, `FOND_CAISSE`, `APPORT`, `RETRAIT`, `DECAISSEMENT`, `REMBOURSEMENT`),
+  mode (`ESPECES`, `MOBILE_MONEY`), montant, session_caisse_id (nullable), document_type, document_id, libelle, date
 
 ### 4.7 Charges & dépenses
 - **categorie_depense** : nom, compte_comptable_id (ex. loyer, électricité, transport, salaires)
@@ -237,6 +244,14 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
   clôture (écart = compté − théorique) ; mobile money et carte sont totalisés. Apports et retraits d'espèces avec motif ;
   un retrait ne peut pas dépasser les espèces en caisse.
 
+- RG-C7 : **Coffre** (table `operation_coffre`, solde par mode = somme des opérations, jamais négatif). À la clôture,
+  les espèces comptées et le mobile money encaissé pendant la session sont versés au coffre (`VERSEMENT_CAISSE`) : la caisse
+  est alors vide. À l'ouverture, le fond de caisse sort du coffre (`FOND_CAISSE`) ; si les espèces du coffre ne suffisent
+  pas, la différence est un apport du propriétaire (531 / 108). Apports et retraits du coffre (permission `GERER_COFFRE` :
+  propriétaire et gérant). Comptabilité : clôture 532 / 531, fond 531 / 532, apport 532 / 108, retrait 108 / 532 ;
+  le mobile money reste au compte 517 (aucune écriture au versement). Plan : `531` Caisse des points de vente, `532` Coffre
+  (remplacent le compte unique 53).
+
 ### 5.8 Charges & dépenses
 - RG-D1 : Toute dépense a une catégorie, elle-même liée à un compte de charge (classe 6).
 - RG-D2 : Une dépense payée en espèces génère un décaissement dans la session de caisse ouverte.
@@ -245,6 +260,10 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 - RG-D4 : Modes de règlement des dépenses, paiements fournisseurs et remboursements clients : espèces ou mobile money
   (opération dans la caisse **ouverte** choisie ; une sortie d'espèces ne dépasse pas les espèces en caisse) ou
   « hors caisse » (banque, argent du propriétaire : aucune opération de caisse). Numéros `DP`, `PF`, `EC`.
+- RG-D4b : Pour une dépense ou un paiement fournisseur en espèces / mobile money, on choisit la **source** : caisse
+  ouverte ou coffre. Caisse insuffisante ou coffre insuffisant (par mode) ⇒ transaction refusée. Dépense payée du coffre :
+  `depense.source = COFFRE`, opération `DECAISSEMENT` au coffre, écriture au crédit de 532 (517 en mobile money) ;
+  son annulation remet l'argent au coffre (`REMBOURSEMENT`), toujours possible.
 - RG-D5 : Une dépense s'annule (motif) tant que sa caisse est ouverte, l'argent y revient ; hors caisse, toujours.
 - RG-D6 : Catégories pré-remplies à la création de la base, chacune avec son compte de charge (classe 6).
 - RG-A9 : Paiement fournisseur rattaché à une réception (au plus son reste à payer) ou en acompte (au plus le solde).
@@ -273,20 +292,20 @@ Schémas d'écritures types (PCG 2005) :
 
 | Opération | Débit | Crédit |
 |-----------|-------|--------|
-| Vente comptant (espèces) | 53 Caisse | 707 Ventes de marchandises |
+| Vente comptant (espèces) | 531 Caisse | 707 Ventes de marchandises |
 | Vente payée par mobile money | 51x Mobile money | 707 Ventes de marchandises |
 | Vente à crédit | 411 Clients | 707 Ventes de marchandises |
-| Encaissement client | 53 Caisse | 411 Clients |
-| Retour client | 707 Ventes de marchandises | 53 Caisse / 411 Clients |
+| Encaissement client | 531 Caisse | 411 Clients |
+| Retour client | 707 Ventes de marchandises | 531 Caisse / 411 Clients |
 | Réception fournisseur | 607 Achats de marchandises | 401 Fournisseurs |
-| Paiement fournisseur | 401 Fournisseurs | 53 Caisse / 512 Banque |
+| Paiement fournisseur | 401 Fournisseurs | 531 Caisse / 532 Coffre / 512 Banque |
 | Variation de stock (hausse) | 37 Stocks de marchandises | 6037 Variation des stocks |
 | Variation de stock (baisse) | 6037 Variation des stocks | 37 Stocks de marchandises |
-| Dépense (loyer, électricité, transport…) | 6x Charge correspondante | 53 Caisse |
-| Écart de caisse négatif | 658 Charges diverses | 53 Caisse |
-| Écart de caisse positif | 53 Caisse | 758 Produits divers |
-| Apport du propriétaire | 53 Caisse | 108 Compte de l'exploitant |
-| Retrait du propriétaire | 108 Compte de l'exploitant | 53 Caisse |
+| Dépense (loyer, électricité, transport…) | 6x Charge correspondante | 531 Caisse ou 532 Coffre |
+| Écart de caisse négatif | 658 Charges diverses | 531 Caisse |
+| Écart de caisse positif | 531 Caisse | 758 Produits divers |
+| Apport du propriétaire | 531 Caisse (ou 532 Coffre) | 108 Compte de l'exploitant |
+| Retrait du propriétaire | 108 Compte de l'exploitant | 531 Caisse (ou 532 Coffre) |
 
 > Numéros de comptes à faire valider par un comptable malgache. Comptes utilisés par l'app : 517 mobile money,
 > 512 banque et carte, 101 capital (stock initial apporté), 120 / 129 résultat.
@@ -359,16 +378,19 @@ aucune gestion des taxes, comptabilité selon le PCG 2005 Madagascar,
 ## 8. Développement
 
 ### Structure du projet
+Un package par domaine fonctionnel sous `app/src/main/java/mg/tsena/` ; chacun contient en général un
+`XxxRepository.kt` (logique métier + transactions Room) et des fichiers de calcul purs, testés en JVM.
 ```
-app/src/main/java/mg/tsena/
-  AppContainer.kt      injection de dépendances manuelle (TsenaApp.container)
-  MainActivity.kt      point d'entrée + réception des sauvegardes (WhatsApp)
-  domain/              rôles, permissions, utilitaires communs
-  data/db/             base Room : entités, DAO, TsenaDatabase
-  auth/                PIN, session, audit, AuthRepository
-  backup/              BackupArchive (format zip, JVM pur) + BackupManager (Android)
-  ui/                  écrans Compose + ViewModels (un dossier par écran)
+AppContainer.kt   injection manuelle (TsenaApp.container) : instance unique de chaque repository
+MainActivity.kt   point d'entrée + réception des sauvegardes (WhatsApp)
+data/db/          TsenaDatabase, entity/, dao/
+domain/           rôles, permissions, Telephone, Nombres, RegleMetierException
+auth/ backup/ catalogue/ lieux/ stock/ appro/ vente/ credit/ finance/ compta/ rapports/ erreurs/ demo/
+ui/               écrans Compose + ViewModels (un dossier par écran) ; ui/home/Modules.kt = modules de l'accueil
 ```
+Architecture : les écrans n'accèdent jamais aux DAO ; ils passent par les repositories. Tout mouvement de stock
+passe par `StockRepository.enregistrerMouvement` et toute écriture comptable par `compta/` dans la même
+transaction Room que le document (RG-K9). Les tests miroir sont dans `app/src/test/java/mg/tsena/<domaine>/`.
 
 ### Conventions
 - Code, noms et textes de l'interface en **français**.
@@ -393,10 +415,11 @@ app/src/main/java/mg/tsena/
    `TsenaDatabase.MIGRATIONS` (aussi utilisée pour accepter les anciennes sauvegardes).
 
 ### Commandes
-- `./gradlew assembleDebug` — compiler l'APK
-- `./gradlew testDebugUnitTest` — tests unitaires
-- Le wrapper Gradle (`gradlew`, `gradle-wrapper.jar`) est généré à la première ouverture dans Android Studio
-  ou avec `gradle wrapper`.
+- `gradle assembleDebug` — compiler l'APK debug (`./gradlew` si le wrapper est généré)
+- `gradle testDebugUnitTest` — tous les tests unitaires JVM
+- `gradle testDebugUnitTest --tests "mg.tsena.stock.*"` — un package ; `--tests "mg.tsena.vente.NomDeClasse"` — une classe
+- La CI (`.github/workflows/android.yml`) utilise Gradle 8.9, JDK 17 ; le wrapper n'est pas dans le dépôt
+  (le générer avec `gradle wrapper` ou ouvrir le projet dans Android Studio). Pas de lint configuré.
 
 ### Avancement
 - **S0** (code écrit, non compilé dans l'environnement de génération) : projet, base Room (commerce,
@@ -452,3 +475,6 @@ app/src/main/java/mg/tsena/
 - **Crédits et performance** : module « Crédits clients » (suivi par client et par vente, ancienneté, relances),
   tableau « Performance » avec graphiques Compose (CA par jour, comptant / crédit sur six mois, meilleurs produits,
   impayés par ancienneté) ; palette de graphiques = palette de référence validée (bleu / orange, rampe bleue).
+- **Coffre** (code écrit, non compilé localement) : argent versé au coffre à chaque clôture de caisse, fond de caisse pris
+  au coffre, apports / retraits, écran « Coffre » (module Dépenses), choix caisse / coffre pour les dépenses et paiements
+  fournisseurs avec refus si le solde est insuffisant (RG-C7, RG-D4b). Plan comptable : 53 remplacé par 531 / 532.

@@ -72,11 +72,13 @@ import mg.tsena.data.db.entity.CategorieDepenseEntity
 import mg.tsena.data.db.entity.DepenseAvecDetails
 import mg.tsena.data.db.entity.ModePaiement
 import mg.tsena.data.db.entity.SessionAvecDetails
+import mg.tsena.data.db.entity.SourceFonds
 import mg.tsena.data.db.entity.StatutDepense
 import mg.tsena.data.db.entity.TotalCategorie
 import mg.tsena.domain.Montant
 import mg.tsena.domain.RegleMetierException
 import mg.tsena.domain.formaterDateHeure
+import mg.tsena.finance.CoffreRepository
 import mg.tsena.finance.FinanceRepository
 import mg.tsena.ui.catalogue.PhotoProduit
 import mg.tsena.ui.common.ChampTexte
@@ -276,7 +278,9 @@ fun DepensesScreen(
                     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("${d.categorieNom} (compte ${d.compteNumero})", style = MaterialTheme.typography.titleSmall)
                         Text(d.depense.description)
-                        Text("${formaterDateHeure(d.depense.date)} · ${d.depense.modePaiement.libelle}" + (d.pointVenteNom?.let { " · $it" } ?: ""))
+                        Text("${formaterDateHeure(d.depense.date)} · ${d.depense.modePaiement.libelle}" +
+                            (if (d.depense.source == SourceFonds.COFFRE && d.depense.modePaiement != ModePaiement.BANQUE) " · Coffre" else "") +
+                            (d.pointVenteNom?.let { " · $it" } ?: ""))
                         d.auteurNom?.let { Text("Saisie par $it") }
                         if (d.depense.statut == StatutDepense.ANNULEE) {
                             Text("Annulée : ${d.depense.motifAnnulation.orEmpty()}", color = MaterialTheme.colorScheme.error)
@@ -316,14 +320,23 @@ fun DepensesScreen(
 
 // --- Saisie d'une dépense ---
 
-class DepenseFormViewModel(private val finance: FinanceRepository, private val photos: PhotoManager) : ViewModel() {
+class DepenseFormViewModel(
+    private val finance: FinanceRepository,
+    private val coffre: CoffreRepository,
+    private val photos: PhotoManager,
+) : ViewModel() {
     val categories: StateFlow<List<CategorieDepenseEntity>> = finance.observerCategories()
         .map { liste -> liste.filter { it.actif } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val caisses: StateFlow<List<SessionAvecDetails>> = finance.observerCaissesOuvertes()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val soldesCoffre: StateFlow<Map<ModePaiement, Long>> = coffre.observerSoldes()
+        .map { liste -> liste.associate { it.mode to it.solde } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
     var categorieId by mutableStateOf<String?>(null)
+    var source by mutableStateOf(SourceFonds.CAISSE)
     var montant by mutableStateOf("")
     var description by mutableStateOf("")
     var mode by mutableStateOf(ModePaiement.ESPECES)
@@ -376,7 +389,7 @@ class DepenseFormViewModel(private val finance: FinanceRepository, private val p
         erreur = null
         viewModelScope.launch {
             try {
-                finance.enregistrerDepense(categorie, m, description, mode, pointVenteId ?: caisseParDefaut, justificatif)
+                finance.enregistrerDepense(categorie, m, description, mode, pointVenteId ?: caisseParDefaut, justificatif, source)
                 justificatif = null
                 terminee = true
             } catch (e: RegleMetierException) {
@@ -394,7 +407,7 @@ class DepenseFormViewModel(private val finance: FinanceRepository, private val p
 
     companion object {
         val Factory = viewModelFactory {
-            initializer { DepenseFormViewModel(container.financeRepository, container.photoManager) }
+            initializer { DepenseFormViewModel(container.financeRepository, container.coffreRepository, container.photoManager) }
         }
     }
 }
@@ -404,6 +417,7 @@ class DepenseFormViewModel(private val finance: FinanceRepository, private val p
 fun DepenseFormScreen(onTermine: () -> Unit, vm: DepenseFormViewModel = viewModel(factory = DepenseFormViewModel.Factory)) {
     val categories by vm.categories.collectAsStateWithLifecycle()
     val caisses by vm.caisses.collectAsStateWithLifecycle()
+    val soldesCoffre by vm.soldesCoffre.collectAsStateWithLifecycle()
     val caisseParDefaut = caisses.firstOrNull()?.pointVenteId
 
     LaunchedEffect(vm.terminee) { if (vm.terminee) onTermine() }
@@ -447,6 +461,9 @@ fun DepenseFormScreen(onTermine: () -> Unit, vm: DepenseFormViewModel = viewMode
                 caisses = caisses,
                 pointVenteId = vm.pointVenteId ?: caisseParDefaut,
                 onPointVente = { vm.pointVenteId = it },
+                source = vm.source,
+                onSource = { vm.source = it },
+                soldesCoffre = soldesCoffre,
             )
 
             Text("Justificatif (facture, reçu)", style = MaterialTheme.typography.titleSmall)

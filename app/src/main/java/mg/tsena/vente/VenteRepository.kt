@@ -34,10 +34,12 @@ import mg.tsena.data.db.entity.StatutSession
 import mg.tsena.data.db.entity.StatutVente
 import mg.tsena.data.db.entity.TypeMouvement
 import mg.tsena.data.db.entity.TypeOperationCaisse
+import mg.tsena.data.db.entity.TypeOperationCoffre
 import mg.tsena.data.db.entity.TypeVente
 import mg.tsena.data.db.entity.VenteAvecDetails
 import mg.tsena.data.db.entity.VenteEntity
 import mg.tsena.domain.AutorisationRequiseException
+import mg.tsena.finance.CoffreRepository
 import mg.tsena.domain.Montant
 import mg.tsena.domain.Permission
 import mg.tsena.domain.Quantite
@@ -71,6 +73,7 @@ class VenteRepository(
     private val auth: AuthRepository,
     private val stock: StockRepository,
     private val comptable: Comptable,
+    private val coffre: CoffreRepository,
 ) {
     private val caisseDao = db.caisseDao()
     private val clientDao = db.clientDao()
@@ -103,8 +106,37 @@ class VenteRepository(
             val caisse = caisseDao.getParPointVente(pv.id)
                 ?: CaisseEntity(nom = "Caisse ${pv.nom}", pointVenteId = pv.id, createdBy = auteur.id).also { caisseDao.inserer(it) }
             if (caisseDao.getSessionOuverte(caisse.id) != null) throw RegleMetierException("La caisse de « ${pv.nom} » est déjà ouverte.")
-            caisseDao.insererSession(SessionCaisseEntity(caisseId = caisse.id, utilisateurId = auteur.id, fondInitial = fondInitial))
+            val nouvelle = SessionCaisseEntity(caisseId = caisse.id, utilisateurId = auteur.id, fondInitial = fondInitial)
+            caisseDao.insererSession(nouvelle)
+            prendreFondAuCoffre(nouvelle, pv.nom, fondInitial, auteur.id)
             audit.enregistrer(ActionAudit.OUVERTURE_CAISSE, "${pv.nom} : fond ${Montant.formater(fondInitial)}")
+        }
+    }
+
+    /**
+     * Le fond de caisse vient du coffre (532 / 531). Si le coffre n'a pas assez d'espèces, la différence est un
+     * apport du propriétaire (531 / 108), pour que la caisse et le coffre restent justes.
+     */
+    private suspend fun prendreFondAuCoffre(s: SessionCaisseEntity, pointVenteNom: String, fond: Long, auteurId: String) {
+        if (fond <= 0) return
+        val prise = minOf(fond, coffre.solde(ModePaiement.ESPECES))
+        if (prise > 0) {
+            coffre.sortir(
+                ModePaiement.ESPECES, prise, TypeOperationCoffre.FOND_CAISSE, "Fond de caisse $pointVenteNom", auteurId,
+                DOCUMENT_SESSION_CAISSE, s.id,
+            )
+            comptable.passer(
+                Journal.CA, "Fond de caisse $pointVenteNom", ReglesComptables.fondCaisse(prise),
+                PieceComptable(DOCUMENT_SESSION_CAISSE, s.id),
+            )
+            audit.enregistrer(ActionAudit.FOND_CAISSE, "$pointVenteNom : ${Montant.formater(prise)} pris au coffre")
+        }
+        val apport = fond - prise
+        if (apport > 0) {
+            comptable.passer(
+                Journal.CA, "Fond de caisse $pointVenteNom : apport du propriétaire", ReglesComptables.apport(apport),
+                PieceComptable(DOCUMENT_SESSION_CAISSE, s.id),
+            )
         }
     }
 
@@ -162,12 +194,43 @@ class VenteRepository(
                 Journal.CA, "Écart de caisse à la clôture", ReglesComptables.ecartCaisse(ecart),
                 PieceComptable(DOCUMENT_SESSION_CAISSE, s.id), date,
             )
+            versementAuCoffre(s, especesComptees, auteur.id)
             audit.enregistrer(
                 ActionAudit.CLOTURE_CAISSE,
                 "Théorique ${Montant.formater(theorique)}, compté ${Montant.formater(especesComptees)}, écart ${Montant.formater(ecart)}",
             )
             ecart
         }
+    }
+
+    /**
+     * Clôture de journée : les espèces comptées (532 / 531) et le mobile money encaissé pendant la session
+     * (déjà au compte 517) entrent au coffre. La caisse est alors vide ; le prochain fond viendra du coffre.
+     */
+    private suspend fun versementAuCoffre(s: SessionCaisseEntity, especesComptees: Long, auteurId: String) {
+        val mobileMoney = CalculsVente.soldeTheorique(
+            0, caisseDao.operations(s.id).filter { it.mode == ModePaiement.MOBILE_MONEY }.map { it.type to it.montant },
+        )
+        if (especesComptees > 0) {
+            coffre.entrer(
+                ModePaiement.ESPECES, especesComptees, TypeOperationCoffre.VERSEMENT_CAISSE, "Clôture de caisse", auteurId,
+                s.id, DOCUMENT_SESSION_CAISSE, s.id,
+            )
+            comptable.passer(
+                Journal.CA, "Versement de la caisse au coffre", ReglesComptables.versementCoffre(especesComptees),
+                PieceComptable(DOCUMENT_SESSION_CAISSE, s.id),
+            )
+        }
+        if (mobileMoney > 0) {
+            coffre.entrer(
+                ModePaiement.MOBILE_MONEY, mobileMoney, TypeOperationCoffre.VERSEMENT_CAISSE, "Clôture de caisse", auteurId,
+                s.id, DOCUMENT_SESSION_CAISSE, s.id,
+            )
+        }
+        audit.enregistrer(
+            ActionAudit.VERSEMENT_COFFRE,
+            "Espèces ${Montant.formater(especesComptees)}, mobile money ${Montant.formater(maxOf(mobileMoney, 0))}",
+        )
     }
 
     private suspend fun soldeEspeces(s: SessionCaisseEntity): Long =
