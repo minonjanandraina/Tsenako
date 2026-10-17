@@ -186,6 +186,8 @@ private fun totaux(fond: Long, operations: List<OperationCaisseEntity>): TotauxC
 fun CaisseScreen(
     peutParametrer: Boolean,
     peutVendre: Boolean,
+    peutFinancer: Boolean,
+    onFinancements: () -> Unit,
     onRetour: () -> Unit,
     onVendre: (pointVenteId: String) -> Unit,
     vm: CaisseViewModel = viewModel(factory = CaisseViewModel.Factory),
@@ -277,6 +279,11 @@ fun CaisseScreen(
                                     }
                                     OutlinedButton(onClick = { vm.ouvrir(CaisseViewModel.Dialogue.RETRAIT) }, modifier = Modifier.weight(1f)) {
                                         Text("Retrait")
+                                    }
+                                }
+                                if (peutFinancer) {
+                                    OutlinedButton(onClick = onFinancements, modifier = Modifier.fillMaxWidth()) {
+                                        Text("Injection de capital / emprunt")
                                     }
                                 }
                                 Button(onClick = { vm.ouvrir(CaisseViewModel.Dialogue.CLOTURER) }, modifier = Modifier.fillMaxWidth()) {

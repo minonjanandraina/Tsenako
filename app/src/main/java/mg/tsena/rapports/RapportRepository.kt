@@ -51,6 +51,8 @@ data class TableauDeBord(
     val valeurStock: Long,
     val creancesClients: Long,
     val dettesFournisseurs: Long,
+    /** Capital restant dû sur les emprunts */
+    val empruntsRestants: Long,
     val depensesMois: Long,
     val nbAlertes: Int,
 )
@@ -102,8 +104,12 @@ class RapportRepository(
         val (debutMois, finMois) = Echeances.bornesMois(mois, zone)
 
         val ventes = combine(observerVentesPeriode(debutJour, finJour), observerVentesPeriode(debutMois, finMois)) { j, m -> j to m }
-        val tiers = combine(db.clientDao().observerAvecCredit(), db.fournisseurDao().observerAvecSolde()) { clients, fournisseurs ->
-            clients.sumOf { maxOf(0, it.creditDu) } to fournisseurs.sumOf { maxOf(0, it.solde) }
+        val tiers = combine(
+            db.clientDao().observerAvecCredit(),
+            db.fournisseurDao().observerAvecSolde(),
+            db.financementDao().observerEmpruntsRestants(),
+        ) { clients, fournisseurs, emprunts ->
+            Triple(clients.sumOf { maxOf(0, it.creditDu) }, fournisseurs.sumOf { maxOf(0, it.solde) }, emprunts)
         }
         return combine(
             ventes,
@@ -111,13 +117,14 @@ class RapportRepository(
             db.stockDao().observerEtat(),
             db.depenseDao().observerTotaux(debutMois, finMois),
             db.stockDao().observerAlertes(),
-        ) { (jour, moisVentes), (creances, dettes), stocks, depenses, alertes ->
+        ) { (jour, moisVentes), (creances, dettes, emprunts), stocks, depenses, alertes ->
             TableauDeBord(
                 jour = jour,
                 mois = moisVentes,
                 valeurStock = stocks.sumOf { it.valeur },
                 creancesClients = creances,
                 dettesFournisseurs = dettes,
+                empruntsRestants = emprunts,
                 depensesMois = depenses.sumOf { it.total },
                 nbAlertes = alertes.size,
             )

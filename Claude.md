@@ -118,6 +118,13 @@ exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jama
 - **depense** : categorie_id, point_vente_id (nullable), montant, date, mode_paiement, session_caisse_id
   (nullable), justificatif (photo), description
 
+### 4.7 bis Capital et emprunts
+- **financement** : numero (`FI-000001`), type (`CAPITAL`, `EMPRUNT`), tiers (associé ou prêteur), compte_numero
+  (101, 164 ou 168), montant, mode_paiement, source (`COFFRE`, `CAISSE`), session_caisse_id (nullable), date, echeance (nullable), description,
+  statut (`VALIDE`, `ANNULE`) + date / auteur / motif d'annulation
+- **remboursement_emprunt** : numero (`RE-000001`), financement_id, capital, interets, mode_paiement, source,
+  session_caisse_id (nullable), reference, date
+
 ### 4.8 Comptabilité
 - **exercice** : date_debut, date_fin, statut (`OUVERT`, `CLOTURE`)
 - **compte** : numero, libelle, classe, type (`ACTIF`, `PASSIF`, `CHARGE`, `PRODUIT`, `CAPITAUX`)
@@ -290,6 +297,22 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 - RG-V12 : Remboursement d'un crédit client (`EC`), au plus le crédit dû. Crédit dû = ventes à crédit − retours
   déduits du crédit − remboursements.
 
+### 5.8 bis Capital et emprunts
+- RG-F1 : **Injection de capital** : argent apporté définitivement au commerce (par défaut par le propriétaire) ;
+  écriture trésorerie / 101. Différent de l'**apport** de caisse (RG-C6, compte courant 108 de l'exploitant).
+- RG-F2 : **Emprunt** : prêteur obligatoire, compte 164 (banque, microfinance) ou 168 (famille, ami, autre) ;
+  écriture trésorerie / 164 ou 168. Durée en mois facultative ⇒ échéance ; retard affiché au-delà.
+- RG-F3 : **Remboursement** : capital (au plus le reste dû = emprunt − capital remboursé) + intérêts (charge 661).
+  Deux écritures distinctes : capital (flux de financement) et intérêts (flux opérationnel).
+- RG-F4 : Entrée / sortie d'argent comme RG-D4b : espèces ou mobile money au **coffre** (par défaut : `APPORT` à
+  l'entrée, `DECAISSEMENT` au remboursement, compte 532 pour les espèces) ou dans la caisse **ouverte** choisie (531),
+  ou hors caisse (banque, 512). `source` enregistrée sur le financement et le remboursement. Un financement sans
+  remboursement s'annule (motif) : l'argent ressort du coffre (`RETRAIT`, solde suffisant) ou de sa caisse si elle est
+  encore ouverte ; contre-passation.
+- RG-F5 : Réservé au propriétaire (permission `GERER_FINANCEMENT`). Écran « Capital et emprunts » (module
+  Comptabilité, raccourcis depuis le coffre et la caisse ouverte). Le reste à rembourser figure au tableau de bord ;
+  au bilan, les comptes 16 forment le poste « Emprunts et dettes financières » (hors capitaux propres).
+
 ### 5.9 Comptabilité
 - RG-K1 : **Partie double** : pour chaque écriture, Σ débit = Σ crédit.
 - RG-K2 : Les écritures sont **générées automatiquement** à partir des documents validés
@@ -323,9 +346,14 @@ Schémas d'écritures types (PCG 2005) :
 | Écart de caisse positif | 531 Caisse | 758 Produits divers |
 | Apport du propriétaire | 531 Caisse (ou 532 Coffre) | 108 Compte de l'exploitant |
 | Retrait du propriétaire | 108 Compte de l'exploitant | 531 Caisse (ou 532 Coffre) |
+| Injection de capital | 531 Caisse / 532 Coffre / 517 / 512 | 101 Capital |
+| Emprunt reçu | 531 / 532 / 517 / 512 | 164 Emprunts (établissements de crédit) / 168 Autres emprunts |
+| Remboursement d'emprunt (capital) | 164 / 168 | 531 / 532 / 517 / 512 |
+| Intérêts d'emprunt | 661 Charges d'intérêts | 531 / 532 / 517 / 512 |
 
 > Numéros de comptes à faire valider par un comptable malgache. Comptes utilisés par l'app : 517 mobile money,
-> 512 banque et carte, 101 capital (stock initial apporté), 120 / 129 résultat.
+> 512 banque et carte, 101 capital (stock initial apporté, injections de capital), 164 / 168 emprunts,
+> 661 intérêts, 120 / 129 résultat.
 
 - RG-K9 : Écritures passées dans la transaction du document (refus de l'écriture = refus du document).
   Annulations de vente et de dépense : contre-passation. Pertes, ventes et retours ne mouvementent pas le stock
@@ -498,3 +526,7 @@ transaction Room que le document (RG-K9). Les tests miroir sont dans `app/src/te
 - **Ventes et appros** (code écrit, non compilé localement) : correction d'une vente (panier pré-rempli, ancienne vente annulée),
   suppression d'un retour client (RG-V14) ; module « Appros » (budget, achats payés du coffre, étiquetage, écarts, envoi
   par transfert : RG-A11 à A13).
+- **Capital et emprunts** (code écrit, non compilé localement) : injections de capital (101), emprunts (164 / 168)
+  avec échéance, remboursements capital + intérêts (661), annulation d'une saisie, au coffre, en caisse ou hors caisse
+  (RG-F1 à RG-F5) ; poste « Emprunts et dettes financières » au bilan, reste dû au tableau de bord. Schéma v1
+  modifié directement (désinstaller l'app de test).

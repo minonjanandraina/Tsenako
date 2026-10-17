@@ -23,6 +23,8 @@ object ReglesComptables {
     const val EXPLOITANT = "108"
     const val RESULTAT_BENEFICE = "120"
     const val RESULTAT_PERTE = "129"
+    const val EMPRUNTS_ETABLISSEMENTS = "164"
+    const val EMPRUNTS_AUTRES = "168"
     const val STOCK = "37"
     const val FOURNISSEURS = "401"
     const val CLIENTS = "411"
@@ -35,6 +37,7 @@ object ReglesComptables {
     const val VARIATION_STOCK = "6037"
     const val ACHATS = "607"
     const val CHARGES_DIVERSES = "658"
+    const val INTERETS = "661"
     const val VENTES = "707"
     const val PRODUITS_DIVERS = "758"
 
@@ -128,6 +131,31 @@ object ReglesComptables {
     /** Retrait du propriétaire depuis le coffre : 108 / 532 (ou 517 en mobile money). */
     fun retraitCoffre(montant: Long, mode: ModePaiement = ModePaiement.ESPECES): List<Imputation> =
         nettoyer(listOf(Imputation(EXPLOITANT, debit = montant), reglement(mode, credit = montant, source = SourceFonds.COFFRE)))
+
+    /**
+     * Injection de capital ou emprunt reçu : débit trésorerie ; crédit [compteFinancement]
+     * (101 capital, 164 emprunt auprès d'un établissement de crédit, 168 autre emprunt).
+     */
+    fun financement(
+        montant: Long,
+        compteFinancement: String,
+        mode: ModePaiement,
+        source: SourceFonds = SourceFonds.CAISSE,
+    ): List<Imputation> =
+        nettoyer(listOf(reglement(mode, debit = montant, source = source), Imputation(compteFinancement, credit = montant)))
+
+    /** Remboursement du capital d'un emprunt : débit 164 / 168 ; crédit trésorerie (flux de financement). */
+    fun remboursementEmprunt(
+        capital: Long,
+        compteEmprunt: String,
+        mode: ModePaiement,
+        source: SourceFonds = SourceFonds.CAISSE,
+    ): List<Imputation> =
+        nettoyer(listOf(Imputation(compteEmprunt, debit = capital), reglement(mode, credit = capital, source = source)))
+
+    /** Intérêts d'un emprunt : débit 661 ; crédit trésorerie (écriture séparée : flux opérationnel). */
+    fun interetsEmprunt(interets: Long, mode: ModePaiement, source: SourceFonds = SourceFonds.CAISSE): List<Imputation> =
+        nettoyer(listOf(Imputation(INTERETS, debit = interets), reglement(mode, credit = interets, source = source)))
 
     /** Stock de départ apporté au commerce : 37 / 101. */
     fun stockInitial(valeur: Long): List<Imputation> =

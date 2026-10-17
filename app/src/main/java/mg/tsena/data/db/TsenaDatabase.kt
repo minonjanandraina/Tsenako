@@ -20,6 +20,7 @@ import mg.tsena.data.db.dao.DepenseDao
 import mg.tsena.data.db.dao.EcritureDao
 import mg.tsena.data.db.dao.EncaissementClientDao
 import mg.tsena.data.db.dao.ExerciceDao
+import mg.tsena.data.db.dao.FinancementDao
 import mg.tsena.data.db.dao.FournisseurDao
 import mg.tsena.data.db.dao.InventaireDao
 import mg.tsena.data.db.dao.JournalAuditDao
@@ -48,6 +49,7 @@ import mg.tsena.data.db.entity.DepotEntity
 import mg.tsena.data.db.entity.EcritureEntity
 import mg.tsena.data.db.entity.EncaissementClientEntity
 import mg.tsena.data.db.entity.ExerciceEntity
+import mg.tsena.data.db.entity.FinancementEntity
 import mg.tsena.data.db.entity.FournisseurEntity
 import mg.tsena.data.db.entity.InventaireEntity
 import mg.tsena.data.db.entity.Journal
@@ -75,12 +77,14 @@ import mg.tsena.data.db.entity.PointVenteEntity
 import mg.tsena.data.db.entity.PrixPointVenteEntity
 import mg.tsena.data.db.entity.ProduitEntity
 import mg.tsena.data.db.entity.ReceptionEntity
+import mg.tsena.data.db.entity.RemboursementEmpruntEntity
 import mg.tsena.data.db.entity.RetourFournisseurEntity
 import mg.tsena.data.db.entity.RetourVenteEntity
 import mg.tsena.data.db.entity.SessionCaisseEntity
 import mg.tsena.data.db.entity.StatutCommande
 import mg.tsena.data.db.entity.StatutDepense
 import mg.tsena.data.db.entity.StatutExercice
+import mg.tsena.data.db.entity.StatutFinancement
 import mg.tsena.data.db.entity.StatutInventaire
 import mg.tsena.data.db.entity.StatutSession
 import mg.tsena.data.db.entity.StatutTransfert
@@ -88,6 +92,7 @@ import mg.tsena.data.db.entity.StatutVente
 import mg.tsena.data.db.entity.StockEntity
 import mg.tsena.data.db.entity.TransfertEntity
 import mg.tsena.data.db.entity.TypeCompte
+import mg.tsena.data.db.entity.TypeFinancement
 import mg.tsena.data.db.entity.TypeMouvement
 import mg.tsena.data.db.entity.TypeOperationCaisse
 import mg.tsena.data.db.entity.TypePaiement
@@ -205,6 +210,18 @@ class Converters {
     fun texteVersTypeCompte(texte: String): TypeCompte = TypeCompte.valueOf(texte)
 
     @TypeConverter
+    fun typeFinancementVersTexte(valeur: TypeFinancement): String = valeur.name
+
+    @TypeConverter
+    fun texteVersTypeFinancement(texte: String): TypeFinancement = TypeFinancement.valueOf(texte)
+
+    @TypeConverter
+    fun statutFinancementVersTexte(valeur: StatutFinancement): String = valeur.name
+
+    @TypeConverter
+    fun texteVersStatutFinancement(texte: String): StatutFinancement = StatutFinancement.valueOf(texte)
+
+    @TypeConverter
     fun journalVersTexte(valeur: Journal): String = valeur.name
 
     @TypeConverter
@@ -253,6 +270,8 @@ class Converters {
         EncaissementClientEntity::class,
         RetourFournisseurEntity::class,
         LigneRetourFournisseurEntity::class,
+        FinancementEntity::class,
+        RemboursementEmpruntEntity::class,
         ExerciceEntity::class,
         CompteEntity::class,
         EcritureEntity::class,
@@ -288,6 +307,7 @@ abstract class TsenaDatabase : RoomDatabase() {
     abstract fun paiementFournisseurDao(): PaiementFournisseurDao
     abstract fun retourFournisseurDao(): RetourFournisseurDao
     abstract fun encaissementClientDao(): EncaissementClientDao
+    abstract fun financementDao(): FinancementDao
     abstract fun compteDao(): CompteDao
     abstract fun exerciceDao(): ExerciceDao
     abstract fun ecritureDao(): EcritureDao
@@ -351,6 +371,8 @@ abstract class TsenaDatabase : RoomDatabase() {
             Triple("108", "Compte de l'exploitant", TypeCompte.CAPITAUX),
             Triple("120", "Résultat net : bénéfice", TypeCompte.CAPITAUX),
             Triple("129", "Résultat net : perte", TypeCompte.CAPITAUX),
+            Triple("164", "Emprunts auprès des établissements de crédit", TypeCompte.PASSIF),
+            Triple("168", "Autres emprunts et dettes assimilées", TypeCompte.PASSIF),
             Triple("218", "Autres immobilisations corporelles", TypeCompte.ACTIF),
             Triple("37", "Stocks de marchandises", TypeCompte.ACTIF),
             Triple("401", "Fournisseurs", TypeCompte.PASSIF),
@@ -373,6 +395,7 @@ abstract class TsenaDatabase : RoomDatabase() {
             Triple("635", "Autres impôts, taxes et versements assimilés", TypeCompte.CHARGE),
             Triple("658", "Charges diverses de gestion courante", TypeCompte.CHARGE),
             Triple("641", "Rémunérations du personnel", TypeCompte.CHARGE),
+            Triple("661", "Charges d'intérêts", TypeCompte.CHARGE),
             Triple("707", "Ventes de marchandises", TypeCompte.PRODUIT),
             Triple("758", "Produits divers de gestion courante", TypeCompte.PRODUIT),
         )

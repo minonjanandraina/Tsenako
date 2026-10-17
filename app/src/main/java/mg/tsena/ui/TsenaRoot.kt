@@ -31,6 +31,7 @@ import mg.tsena.ui.finance.CategoriesDepenseScreen
 import mg.tsena.ui.finance.CoffreScreen
 import mg.tsena.ui.finance.DepenseFormScreen
 import mg.tsena.ui.finance.DepensesScreen
+import mg.tsena.ui.finance.FinancementsScreen
 import mg.tsena.ui.vente.ClientScreen
 import mg.tsena.ui.appro.ReceptionFormScreen
 import mg.tsena.ui.appro.ReceptionScreen
@@ -109,6 +110,7 @@ object Routes {
     const val COFFRE = "coffre"
     const val DEPENSE_FORM = "depense-saisie"
     const val CATEGORIES_DEPENSES = "depenses/categories"
+    const val FINANCEMENTS = "financements"
     const val COMPTABILITE = "comptabilite"
     const val JOURNAUX = "comptabilite/journaux"
     const val PLAN_COMPTABLE = "comptabilite/plan"
@@ -342,6 +344,8 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
             CaisseScreen(
                 peutParametrer = etat.utilisateur.peut(Permission.PARAMETRER_COMMERCE),
                 peutVendre = etat.utilisateur.peut(Permission.VENDRE),
+                peutFinancer = etat.utilisateur.peut(Permission.GERER_FINANCEMENT),
+                onFinancements = { nav.navigate(Routes.FINANCEMENTS) },
                 onRetour = { nav.popBackStack() },
                 onVendre = { pointVenteId -> nav.navigate(Routes.vente(pointVenteId)) },
             )
@@ -394,8 +398,15 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
             )
         }
         composable(Routes.DEPENSE_FORM) { DepenseFormScreen(onTermine = { nav.popBackStack() }) }
-        composable(Routes.COFFRE) { CoffreScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.COFFRE) {
+            CoffreScreen(
+                peutFinancer = etat.utilisateur.peut(Permission.GERER_FINANCEMENT),
+                onFinancements = { nav.navigate(Routes.FINANCEMENTS) },
+                onRetour = { nav.popBackStack() },
+            )
+        }
         composable(Routes.CATEGORIES_DEPENSES) { CategoriesDepenseScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.FINANCEMENTS) { FinancementsScreen(onRetour = { nav.popBackStack() }) }
         composable(Routes.COMPTABILITE) {
             ComptabiliteScreen(
                 peutCloturer = etat.utilisateur.peut(Permission.GERER_COMPTABILITE),

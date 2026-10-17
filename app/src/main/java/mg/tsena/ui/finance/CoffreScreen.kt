@@ -91,7 +91,12 @@ class CoffreViewModel(private val coffre: CoffreRepository) : ViewModel() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CoffreScreen(onRetour: () -> Unit, vm: CoffreViewModel = viewModel(factory = CoffreViewModel.Factory)) {
+fun CoffreScreen(
+    peutFinancer: Boolean,
+    onFinancements: () -> Unit,
+    onRetour: () -> Unit,
+    vm: CoffreViewModel = viewModel(factory = CoffreViewModel.Factory),
+) {
     val soldes by vm.soldes.collectAsStateWithLifecycle()
     val operations by vm.operations.collectAsStateWithLifecycle()
     var dialogue by rememberSaveable { mutableStateOf<Boolean?>(null) } // true = apport, false = retrait
@@ -125,6 +130,9 @@ fun CoffreScreen(onRetour: () -> Unit, vm: CoffreViewModel = viewModel(factory =
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { vm.effacerErreur(); dialogue = true }) { Text("Apport") }
                 OutlinedButton(onClick = { vm.effacerErreur(); dialogue = false }) { Text("Retrait") }
+            }
+            if (peutFinancer) {
+                OutlinedButton(onClick = onFinancements, modifier = Modifier.fillMaxWidth()) { Text("Injection de capital / emprunt") }
             }
             Text("Mouvements récents", style = MaterialTheme.typography.titleSmall)
             if (operations.isEmpty()) {

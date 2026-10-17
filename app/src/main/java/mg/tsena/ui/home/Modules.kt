@@ -163,9 +163,17 @@ fun entreesModule(module: Module, u: UtilisateurConnecte, nbAlertes: Int, nbEnTr
                 painterResource(R.drawable.ic_comptabilite)
             },
             EntreeModule("Comptabilité", "Journaux, plan comptable PCG 2005, exercices", Routes.COMPTABILITE) { painterResource(R.drawable.ic_comptabilite) },
-        )
+        ).let { if (it.isEmpty()) it else it + entreeFinancements(u) }
     }
 }
+
+/** Injections de capital et emprunts (RG-F5 : propriétaire uniquement). */
+private fun entreeFinancements(u: UtilisateurConnecte): List<EntreeModule> =
+    if (u.peut(Permission.GERER_FINANCEMENT)) {
+        listOf(EntreeModule("Capital et emprunts", "Injecter du capital, emprunter, rembourser", Routes.FINANCEMENTS) { painterResource(R.drawable.ic_credit) })
+    } else {
+        emptyList()
+    }
 
 /** Grande icône de l'accueil, sur fond [couleur] ; [alerte] dans une pastille blanche. */
 @Composable

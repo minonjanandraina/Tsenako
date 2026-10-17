@@ -9,11 +9,14 @@ import mg.tsena.data.db.entity.CategorieDepenseEntity
 import mg.tsena.data.db.entity.DepenseAvecDetails
 import mg.tsena.data.db.entity.DepenseEntity
 import mg.tsena.data.db.entity.EncaissementClientEntity
+import mg.tsena.data.db.entity.FinancementAvecSolde
+import mg.tsena.data.db.entity.FinancementEntity
 import mg.tsena.data.db.entity.LigneReceptionEntity
 import mg.tsena.data.db.entity.LigneReceptionRetournable
 import mg.tsena.data.db.entity.LigneRetourFournisseurEntity
 import mg.tsena.data.db.entity.PaiementFournisseurEntity
 import mg.tsena.data.db.entity.ReceptionAPayer
+import mg.tsena.data.db.entity.RemboursementEmpruntEntity
 import mg.tsena.data.db.entity.RetourFournisseurEntity
 import mg.tsena.data.db.entity.TotalCategorie
 import mg.tsena.credit.TotalClient
@@ -189,4 +192,61 @@ interface EncaissementClientDao {
 
     @Insert
     suspend fun inserer(encaissement: EncaissementClientEntity)
+}
+
+@Dao
+interface FinancementDao {
+    @Query(
+        """
+        SELECT f.*,
+               COALESCE((SELECT SUM(r.capital) FROM remboursement_emprunt r WHERE r.financement_id = f.id), 0) AS capital_rembourse,
+               COALESCE((SELECT SUM(r.interets) FROM remboursement_emprunt r WHERE r.financement_id = f.id), 0) AS interets_payes
+        FROM financement f
+        ORDER BY f.date DESC
+        """
+    )
+    fun observerAvecSoldes(): Flow<List<FinancementAvecSolde>>
+
+    @Query(
+        """
+        SELECT f.*,
+               COALESCE((SELECT SUM(r.capital) FROM remboursement_emprunt r WHERE r.financement_id = f.id), 0) AS capital_rembourse,
+               COALESCE((SELECT SUM(r.interets) FROM remboursement_emprunt r WHERE r.financement_id = f.id), 0) AS interets_payes
+        FROM financement f
+        WHERE f.id = :id
+        """
+    )
+    suspend fun getAvecSolde(id: String): FinancementAvecSolde?
+
+    /** Capital restant dû sur l'ensemble des emprunts valides. */
+    @Query(
+        """
+        SELECT COALESCE((SELECT SUM(montant) FROM financement WHERE type = 'EMPRUNT' AND statut = 'VALIDE'), 0)
+             - COALESCE((SELECT SUM(r.capital) FROM remboursement_emprunt r JOIN financement f ON f.id = r.financement_id
+                         WHERE f.statut = 'VALIDE'), 0)
+        """
+    )
+    fun observerEmpruntsRestants(): Flow<Long>
+
+    @Query("SELECT * FROM remboursement_emprunt WHERE financement_id = :financementId ORDER BY date DESC")
+    fun observerRemboursements(financementId: String): Flow<List<RemboursementEmpruntEntity>>
+
+    @Query("SELECT COUNT(*) FROM remboursement_emprunt WHERE financement_id = :financementId")
+    suspend fun compterRemboursements(financementId: String): Int
+
+    /** Les financements ne sont jamais supprimés : le compte donne le prochain numéro. */
+    @Query("SELECT COUNT(*) FROM financement")
+    suspend fun compter(): Int
+
+    @Query("SELECT COUNT(*) FROM remboursement_emprunt")
+    suspend fun compterTousRemboursements(): Int
+
+    @Insert
+    suspend fun inserer(financement: FinancementEntity)
+
+    @Update
+    suspend fun modifier(financement: FinancementEntity)
+
+    @Insert
+    suspend fun insererRemboursement(remboursement: RemboursementEmpruntEntity)
 }

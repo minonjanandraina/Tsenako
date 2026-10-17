@@ -107,4 +107,37 @@ class ReglesComptablesTest {
         assertTrue(ReglesComptables.equilibree(lignes))
         assertEquals(40_000L, lignes.first { it.compte == "532" }.credit)
     }
+
+    @Test
+    fun `injection de capital et emprunt`() {
+        val capital = ReglesComptables.financement(500_000, ReglesComptables.CAPITAL, ModePaiement.ESPECES)
+        assertTrue(ReglesComptables.equilibree(capital))
+        assertEquals(500_000L, capital.first { it.compte == "531" }.debit)
+        assertEquals(500_000L, capital.first { it.compte == "101" }.credit)
+        val emprunt = ReglesComptables.financement(1_000_000, ReglesComptables.EMPRUNTS_ETABLISSEMENTS, ModePaiement.BANQUE)
+        assertEquals(1_000_000L, emprunt.first { it.compte == "512" }.debit)
+        assertEquals(1_000_000L, emprunt.first { it.compte == "164" }.credit)
+    }
+
+    @Test
+    fun `remboursement d'emprunt capital et interets`() {
+        val capital = ReglesComptables.remboursementEmprunt(100_000, ReglesComptables.EMPRUNTS_AUTRES, ModePaiement.MOBILE_MONEY)
+        assertTrue(ReglesComptables.equilibree(capital))
+        assertEquals(100_000L, capital.first { it.compte == "168" }.debit)
+        assertEquals(100_000L, capital.first { it.compte == "517" }.credit)
+        val interets = ReglesComptables.interetsEmprunt(5_000, ModePaiement.ESPECES)
+        assertEquals(5_000L, interets.first { it.compte == "661" }.debit)
+        assertEquals(5_000L, interets.first { it.compte == "531" }.credit)
+        assertTrue(ReglesComptables.interetsEmprunt(0, ModePaiement.ESPECES).isEmpty())
+    }
+
+    @Test
+    fun `capital et emprunt par le coffre`() {
+        val capital = ReglesComptables.financement(300_000, ReglesComptables.CAPITAL, ModePaiement.ESPECES, SourceFonds.COFFRE)
+        assertEquals(300_000L, capital.first { it.compte == "532" }.debit)
+        val rembourse = ReglesComptables.remboursementEmprunt(50_000, ReglesComptables.EMPRUNTS_AUTRES, ModePaiement.ESPECES, SourceFonds.COFFRE)
+        assertEquals(50_000L, rembourse.first { it.compte == "532" }.credit)
+        val interets = ReglesComptables.interetsEmprunt(2_000, ModePaiement.ESPECES, SourceFonds.COFFRE)
+        assertEquals(2_000L, interets.first { it.compte == "532" }.credit)
+    }
 }

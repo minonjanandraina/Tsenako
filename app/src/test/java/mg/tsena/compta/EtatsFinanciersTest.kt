@@ -56,4 +56,23 @@ class EtatsFinanciersTest {
         assertEquals(balance.sumOf { it.debit }, balance.sumOf { it.credit })
         assertEquals(balance.sumOf { it.soldeDebiteur }, balance.sumOf { it.soldeCrediteur })
     }
+
+    @Test
+    fun `capital et emprunts au bilan et en flux de financement`() {
+        val financement = ecriture("53", "101", 200_000) + // injection de capital
+            ecriture("512", "164", 500_000) + // emprunt bancaire
+            ecriture("164", "512", 100_000) + // remboursement du capital
+            ecriture("661", "512", 10_000) // intérêts
+        val tout = lignes + financement
+        val resultat = EtatsFinanciers.compteResultat(tout).resultatNet
+        assertEquals(-15_000L, resultat)
+        assertEquals(10_000L, EtatsFinanciers.compteResultat(tout).chargesFinancieres.montant)
+        val bilan = EtatsFinanciers.bilan(tout, resultat)
+        assertEquals(300_000L, bilan.capital.montant)
+        assertEquals(400_000L, bilan.emprunts.montant)
+        assertEquals(bilan.totalActif, bilan.totalPassif)
+        val flux = EtatsFinanciers.fluxTresorerie(tout, tresorerieDebut = 0)
+        assertEquals(600_000L, flux.fluxFinancement)
+        assertEquals(-15_000L, flux.autresOperationnels)
+    }
 }

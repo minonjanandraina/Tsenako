@@ -149,6 +149,76 @@ data class LigneRetourFournisseurEntity(
     val montant: Long,
 )
 
+enum class TypeFinancement(val libelle: String) {
+    /** Argent apporté définitivement au commerce par le propriétaire (101 Capital) */
+    CAPITAL("Injection de capital"),
+    /** Argent prêté au commerce, à rembourser (164 ou 168) */
+    EMPRUNT("Emprunt"),
+}
+
+enum class StatutFinancement { VALIDE, ANNULE }
+
+/**
+ * Injection de capital ou emprunt (RG-F1 à RG-F5) : argent qui entre dans la trésorerie sans être une vente.
+ * Espèces / mobile money : entrée au coffre ou dans la caisse ouverte d'un point de vente ; banque : ni l'un ni l'autre.
+ */
+@Entity(
+    tableName = "financement",
+    foreignKeys = [ForeignKey(entity = SessionCaisseEntity::class, parentColumns = ["id"], childColumns = ["session_caisse_id"])],
+    indices = [Index("session_caisse_id"), Index("date"), Index(value = ["numero"], unique = true)],
+)
+data class FinancementEntity(
+    @PrimaryKey val id: String = nouvelId(),
+    /** FI-000001 */
+    val numero: String,
+    val type: TypeFinancement,
+    /** Associé (capital) ou prêteur (emprunt : banque, microfinance, famille…) */
+    val tiers: String,
+    /** Compte crédité : 101 (capital), 164 (établissement de crédit) ou 168 (autre prêteur) */
+    @ColumnInfo(name = "compte_numero") val compteNumero: String,
+    val montant: Long,
+    @ColumnInfo(name = "mode_paiement") val modePaiement: ModePaiement,
+    /** Où est entré l'argent (espèces, mobile money) : coffre ou caisse */
+    val source: SourceFonds = SourceFonds.COFFRE,
+    @ColumnInfo(name = "session_caisse_id") val sessionCaisseId: String? = null,
+    val date: Long = maintenant(),
+    /** Date limite de remboursement d'un emprunt (facultative) */
+    val echeance: Long? = null,
+    val description: String? = null,
+    val statut: StatutFinancement = StatutFinancement.VALIDE,
+    @ColumnInfo(name = "date_annulation") val dateAnnulation: Long? = null,
+    @ColumnInfo(name = "annule_par") val annulePar: String? = null,
+    @ColumnInfo(name = "motif_annulation") val motifAnnulation: String? = null,
+    @ColumnInfo(name = "created_at") val createdAt: Long = maintenant(),
+    @ColumnInfo(name = "updated_at") val updatedAt: Long = createdAt,
+    @ColumnInfo(name = "created_by") val createdBy: String? = null,
+)
+
+/** Remboursement d'un emprunt (RG-F3) : part de capital (diminue la dette) et intérêts (charge 661). */
+@Entity(
+    tableName = "remboursement_emprunt",
+    foreignKeys = [
+        ForeignKey(entity = FinancementEntity::class, parentColumns = ["id"], childColumns = ["financement_id"]),
+        ForeignKey(entity = SessionCaisseEntity::class, parentColumns = ["id"], childColumns = ["session_caisse_id"]),
+    ],
+    indices = [Index("financement_id"), Index("session_caisse_id"), Index(value = ["numero"], unique = true)],
+)
+data class RemboursementEmpruntEntity(
+    @PrimaryKey val id: String = nouvelId(),
+    /** RE-000001 */
+    val numero: String,
+    @ColumnInfo(name = "financement_id") val financementId: String,
+    val capital: Long,
+    val interets: Long,
+    @ColumnInfo(name = "mode_paiement") val modePaiement: ModePaiement,
+    /** D'où est sorti l'argent (espèces, mobile money) : coffre ou caisse */
+    val source: SourceFonds = SourceFonds.COFFRE,
+    @ColumnInfo(name = "session_caisse_id") val sessionCaisseId: String? = null,
+    val reference: String? = null,
+    val date: Long = maintenant(),
+    @ColumnInfo(name = "created_by") val createdBy: String? = null,
+)
+
 // --- Résultats de requêtes ---
 
 data class DepenseAvecDetails(
@@ -179,3 +249,18 @@ data class LigneReceptionRetournable(
     @ColumnInfo(name = "unite_symbole") val uniteSymbole: String,
     @ColumnInfo(name = "unite_decimale") val uniteDecimale: Boolean,
 )
+
+/** Financement avec ce qui a déjà été remboursé (capital et intérêts). */
+data class FinancementAvecSolde(
+    @Embedded val financement: FinancementEntity,
+    @ColumnInfo(name = "capital_rembourse") val capitalRembourse: Long,
+    @ColumnInfo(name = "interets_payes") val interetsPayes: Long,
+) {
+    /** Capital restant dû (0 pour une injection de capital ou un financement annulé) */
+    val reste: Long
+        get() = if (financement.type == TypeFinancement.EMPRUNT && financement.statut == StatutFinancement.VALIDE) {
+            financement.montant - capitalRembourse
+        } else {
+            0
+        }
+}

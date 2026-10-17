@@ -124,6 +124,7 @@ fun TableauDeBordScreen(
                     Chiffre("Valeur du stock", Montant.formater(t.valeurStock))
                     Chiffre("Crédits clients à encaisser", Montant.formater(t.creancesClients))
                     Chiffre("Dettes fournisseurs", Montant.formater(t.dettesFournisseurs))
+                    if (t.empruntsRestants > 0) Chiffre("Emprunts à rembourser", Montant.formater(t.empruntsRestants))
                 }
             }
             if (t.nbAlertes > 0) {
@@ -429,6 +430,8 @@ private fun LazyListScope.bilan(e: EtatsExercice) {
         LigneEtat("Capital et compte de l'exploitant", b.capital.montant)
         LigneEtat("Résultats antérieurs", b.resultatsAnterieurs.montant)
         LigneEtat("Résultat de l'exercice", b.resultatExercice)
+        LigneEtat("Emprunts et dettes financières", b.emprunts.montant)
+        Detail(b.emprunts.comptes)
         LigneEtat("Fournisseurs", b.dettesFournisseurs.montant)
         LigneEtat("Autres dettes", b.autresDettes.montant)
         LigneEtat("Trésorerie passif", b.tresoreriePassif.montant)
@@ -540,6 +543,7 @@ private fun texteEtat(nomCommerce: String, e: EtatsExercice, onglet: Int): Strin
             ligne("Capital et compte de l'exploitant", capital.montant)
             ligne("Résultats antérieurs", resultatsAnterieurs.montant)
             ligne("Résultat de l'exercice", resultatExercice)
+            ligne("Emprunts et dettes financières", emprunts.montant)
             ligne("Fournisseurs", dettesFournisseurs.montant)
             ligne("Autres dettes", autresDettes.montant)
             ligne("Trésorerie passif", tresoreriePassif.montant)

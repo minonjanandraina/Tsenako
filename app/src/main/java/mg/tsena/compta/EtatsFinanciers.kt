@@ -43,6 +43,7 @@ data class Bilan(
     val capital: Poste,
     val resultatsAnterieurs: Poste,
     val resultatExercice: Long,
+    val emprunts: Poste,
     val dettesFournisseurs: Poste,
     val autresDettes: Poste,
     val tresoreriePassif: Poste,
@@ -134,7 +135,8 @@ object EtatsFinanciers {
         val stocks = poste("Stocks", listOf("3"), 1)
         val creances = poste("Clients et autres débiteurs", listOf("4"), 1) { _, s -> s > 0 }
         val tresorerieActif = poste("Trésorerie", listOf("5"), 1) { _, s -> s > 0 }
-        val capital = poste("Capital et compte de l'exploitant", listOf("1"), -1) { c, _ -> !c.startsWith("12") }
+        val capital = poste("Capital et compte de l'exploitant", listOf("1"), -1) { c, _ -> !c.startsWith("12") && !c.startsWith("16") }
+        val emprunts = poste("Emprunts et dettes financières", listOf("16"), -1)
         // Résultats affectés (12) + charges et produits cumulés, moins ceux de l'exercice
         val anterieurs12 = -soldes.filterKeys { it.startsWith("12") }.values.sum()
         val gestionCumulee = -soldes.filterKeys { it.startsWith("6") || it.startsWith("7") }.values.sum()
@@ -144,7 +146,7 @@ object EtatsFinanciers {
         val tresoreriePassif = poste("Trésorerie passif (découverts)", listOf("5"), -1) { _, s -> s < 0 }
 
         val totalActif = immobilisations.montant + stocks.montant + creances.montant + tresorerieActif.montant
-        val totalPassif = capital.montant + resultatsAnterieurs.montant + resultatExercice +
+        val totalPassif = capital.montant + resultatsAnterieurs.montant + resultatExercice + emprunts.montant +
             fournisseurs.montant + autresDettes.montant + tresoreriePassif.montant
         return Bilan(
             immobilisations = immobilisations,
@@ -155,6 +157,7 @@ object EtatsFinanciers {
             capital = capital,
             resultatsAnterieurs = resultatsAnterieurs,
             resultatExercice = resultatExercice,
+            emprunts = emprunts,
             dettesFournisseurs = fournisseurs,
             autresDettes = autresDettes,
             tresoreriePassif = tresoreriePassif,

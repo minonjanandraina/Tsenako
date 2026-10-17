@@ -14,15 +14,20 @@ import mg.tsena.data.db.entity.CategorieDepenseEntity
 import mg.tsena.data.db.entity.DepenseAvecDetails
 import mg.tsena.data.db.entity.DepenseEntity
 import mg.tsena.data.db.entity.EncaissementClientEntity
+import mg.tsena.data.db.entity.FinancementAvecSolde
+import mg.tsena.data.db.entity.FinancementEntity
 import mg.tsena.data.db.entity.ModePaiement
 import mg.tsena.data.db.entity.OperationCaisseEntity
 import mg.tsena.data.db.entity.PaiementFournisseurEntity
 import mg.tsena.data.db.entity.ReceptionAPayer
+import mg.tsena.data.db.entity.RemboursementEmpruntEntity
 import mg.tsena.data.db.entity.SessionAvecDetails
 import mg.tsena.data.db.entity.SourceFonds
 import mg.tsena.data.db.entity.StatutDepense
+import mg.tsena.data.db.entity.StatutFinancement
 import mg.tsena.data.db.entity.StatutSession
 import mg.tsena.data.db.entity.TotalCategorie
+import mg.tsena.data.db.entity.TypeFinancement
 import mg.tsena.data.db.entity.TypeOperationCaisse
 import mg.tsena.data.db.entity.TypeOperationCoffre
 import mg.tsena.data.db.entity.VenteAvecDetails
@@ -36,7 +41,10 @@ import java.time.YearMonth
 /** Modes de règlement des sorties et rentrées d'argent hors vente. */
 val MODES_REGLEMENT = listOf(ModePaiement.ESPECES, ModePaiement.MOBILE_MONEY, ModePaiement.BANQUE)
 
-/** Charges et dépenses (RG-D1 à RG-D3), paiements fournisseurs (RG-A3) et remboursements des crédits clients. */
+/**
+ * Charges et dépenses (RG-D1 à RG-D3), paiements fournisseurs (RG-A3), remboursements des crédits clients,
+ * injections de capital et emprunts (RG-F1 à RG-F5).
+ */
 class FinanceRepository(
     private val db: TsenaDatabase,
     private val session: SessionManager,
@@ -49,6 +57,7 @@ class FinanceRepository(
     private val paiementDao = db.paiementFournisseurDao()
     private val encaissementDao = db.encaissementClientDao()
     private val caisseDao = db.caisseDao()
+    private val financementDao = db.financementDao()
 
     /** Caisses ouvertes des points de vente visibles par l'utilisateur (RG-X2). */
     fun observerCaissesOuvertes(): Flow<List<SessionAvecDetails>> =
@@ -313,6 +322,180 @@ class FinanceRepository(
         return mouvementCaisse(pointVenteId, mode, TypeOperationCaisse.DECAISSEMENT, montant, documentType, documentId, libelle, auteurId)
     }
 
+    // --- Injections de capital et emprunts (RG-F1 à RG-F5) ---
+
+    fun observerFinancements(): Flow<List<FinancementAvecSolde>> = financementDao.observerAvecSoldes()
+
+    fun observerRemboursements(financementId: String): Flow<List<RemboursementEmpruntEntity>> =
+        financementDao.observerRemboursements(financementId)
+
+    /**
+     * Argent apporté au commerce. Capital : trésorerie / 101. Emprunt : trésorerie / 164 (banque, microfinance si
+     * [etablissementCredit]) ou 168 (famille, ami, autre). Espèces / mobile money : entrée au coffre ou dans la caisse
+     * ouverte de [pointVenteId] selon [source] ; banque : ni l'un ni l'autre.
+     */
+    suspend fun enregistrerFinancement(
+        type: TypeFinancement,
+        tiers: String,
+        etablissementCredit: Boolean,
+        montant: Long,
+        mode: ModePaiement,
+        pointVenteId: String?,
+        echeance: Long?,
+        description: String,
+        source: SourceFonds = SourceFonds.COFFRE,
+    ): String {
+        val auteur = session.exiger(Permission.GERER_FINANCEMENT)
+        if (montant <= 0) throw RegleMetierException("Le montant doit être supérieur à zéro.")
+        val nom = tiers.trim().ifEmpty {
+            if (type == TypeFinancement.EMPRUNT) throw RegleMetierException("Indiquez le prêteur.") else "Propriétaire"
+        }
+        if (type == TypeFinancement.EMPRUNT && echeance != null && echeance < maintenant()) {
+            throw RegleMetierException("L'échéance de remboursement doit être dans le futur.")
+        }
+        val compte = when {
+            type == TypeFinancement.CAPITAL -> ReglesComptables.CAPITAL
+            etablissementCredit -> ReglesComptables.EMPRUNTS_ETABLISSEMENTS
+            else -> ReglesComptables.EMPRUNTS_AUTRES
+        }
+        return db.withTransaction {
+            val financement = FinancementEntity(
+                numero = numero(PREFIXE_FINANCEMENT, financementDao.compter() + 1),
+                type = type,
+                tiers = nom,
+                compteNumero = compte,
+                montant = montant,
+                modePaiement = mode,
+                source = sourceEffective(mode, source),
+                echeance = if (type == TypeFinancement.EMPRUNT) echeance else null,
+                description = description.trim().ifEmpty { null },
+                createdBy = auteur.id,
+            )
+            val libelle = libelleFinancement(financement)
+            val sessionId = if (financement.source == SourceFonds.COFFRE && mode != ModePaiement.BANQUE) {
+                coffre.entrer(mode, montant, TypeOperationCoffre.APPORT, libelle, auteur.id, null, DOCUMENT_FINANCEMENT, financement.id)
+                null
+            } else {
+                mouvementCaisse(pointVenteId, mode, TypeOperationCaisse.APPORT, montant, DOCUMENT_FINANCEMENT, financement.id, libelle, auteur.id)
+            }
+            financementDao.inserer(financement.copy(sessionCaisseId = sessionId))
+            comptable.passer(
+                ReglesComptables.journalReglement(mode), libelle,
+                ReglesComptables.financement(montant, compte, mode, financement.source), PieceComptable(DOCUMENT_FINANCEMENT, financement.id),
+            )
+            audit.enregistrer(
+                if (type == TypeFinancement.CAPITAL) ActionAudit.INJECTION_CAPITAL else ActionAudit.EMPRUNT,
+                "${financement.numero} : $nom, ${Montant.formater(montant)}",
+            )
+            financement.id
+        }
+    }
+
+    /**
+     * RG-F3 : remboursement d'un emprunt. [capital] au plus le reste dû ; [interets] en charge 661, sans limite.
+     * Deux écritures : le capital (flux de financement) et les intérêts (flux opérationnel).
+     */
+    suspend fun rembourserEmprunt(
+        financementId: String,
+        capital: Long,
+        interets: Long,
+        mode: ModePaiement,
+        pointVenteId: String?,
+        reference: String,
+        source: SourceFonds = SourceFonds.COFFRE,
+    ) {
+        val auteur = session.exiger(Permission.GERER_FINANCEMENT)
+        if (capital < 0 || interets < 0) throw RegleMetierException("Les montants ne peuvent pas être négatifs.")
+        if (capital + interets <= 0) throw RegleMetierException("Le montant doit être supérieur à zéro.")
+        db.withTransaction {
+            val f = financementDao.getAvecSolde(financementId) ?: throw RegleMetierException("Emprunt introuvable.")
+            val emprunt = f.financement
+            if (emprunt.type != TypeFinancement.EMPRUNT) throw RegleMetierException("Une injection de capital ne se rembourse pas.")
+            if (emprunt.statut != StatutFinancement.VALIDE) throw RegleMetierException("Cet emprunt est annulé.")
+            if (capital > f.reste) throw RegleMetierException("Il ne reste que ${Montant.formater(f.reste)} à rembourser à ${emprunt.tiers}.")
+            val remboursement = RemboursementEmpruntEntity(
+                numero = numero(PREFIXE_REMBOURSEMENT, financementDao.compterTousRemboursements() + 1),
+                financementId = emprunt.id,
+                capital = capital,
+                interets = interets,
+                modePaiement = mode,
+                source = sourceEffective(mode, source),
+                reference = reference.trim().ifEmpty { null },
+                createdBy = auteur.id,
+            )
+            val libelle = "Remboursement ${emprunt.tiers} (${remboursement.numero})"
+            val sessionId = sortirFonds(
+                remboursement.source, pointVenteId, mode, capital + interets,
+                DOCUMENT_REMBOURSEMENT_EMPRUNT, remboursement.id, libelle, auteur.id,
+            )
+            financementDao.insererRemboursement(remboursement.copy(sessionCaisseId = sessionId))
+            val piece = PieceComptable(DOCUMENT_REMBOURSEMENT_EMPRUNT, remboursement.id)
+            val journal = ReglesComptables.journalReglement(mode)
+            val source = remboursement.source
+            comptable.passer(journal, libelle, ReglesComptables.remboursementEmprunt(capital, emprunt.compteNumero, mode, source), piece)
+            comptable.passer(
+                journal, "Intérêts ${emprunt.tiers} (${remboursement.numero})", ReglesComptables.interetsEmprunt(interets, mode, source), piece,
+            )
+            audit.enregistrer(
+                ActionAudit.REMBOURSEMENT_EMPRUNT,
+                "${remboursement.numero} : ${emprunt.tiers}, capital ${Montant.formater(capital)}, intérêts ${Montant.formater(interets)}",
+            )
+        }
+    }
+
+    /**
+     * RG-F4 : annulation d'une saisie erronée, sans remboursement enregistré. L'argent ressort du coffre (s'il en
+     * contient assez) ou de la même caisse si elle est encore ouverte ; hors caisse, toujours possible.
+     */
+    suspend fun annulerFinancement(id: String, motif: String) {
+        val auteur = session.exiger(Permission.GERER_FINANCEMENT)
+        val texte = motif.trim().ifEmpty { throw RegleMetierException("Indiquez le motif de l'annulation.") }
+        db.withTransaction {
+            val f = financementDao.getAvecSolde(id)?.financement ?: throw RegleMetierException("Financement introuvable.")
+            if (f.statut == StatutFinancement.ANNULE) throw RegleMetierException("${f.numero} est déjà annulé.")
+            if (financementDao.compterRemboursements(f.id) > 0) {
+                throw RegleMetierException("Des remboursements sont déjà enregistrés sur cet emprunt : il ne peut plus être annulé.")
+            }
+            if (f.source == SourceFonds.COFFRE && f.modePaiement != ModePaiement.BANQUE) {
+                coffre.sortir(f.modePaiement, f.montant, TypeOperationCoffre.RETRAIT, "Annulation ${f.numero}", auteur.id, DOCUMENT_FINANCEMENT, f.id)
+            }
+            f.sessionCaisseId?.let { sessionId ->
+                val s = caisseDao.getSession(sessionId)?.takeIf { it.statut == StatutSession.OUVERTE }
+                    ?: throw RegleMetierException("La caisse de ${f.numero} est clôturée : il ne peut plus être annulé.")
+                val disponible = CalculsVente.soldeTheorique(
+                    if (f.modePaiement == ModePaiement.ESPECES) s.fondInitial else 0,
+                    caisseDao.operations(s.id).filter { it.mode == f.modePaiement }.map { it.type to it.montant },
+                )
+                if (f.montant > disponible) {
+                    throw RegleMetierException("Il n'y a que ${Montant.formater(disponible)} (${f.modePaiement.libelle.lowercase()}) dans la caisse.")
+                }
+                caisseDao.insererOperation(
+                    OperationCaisseEntity(
+                        sessionId = sessionId,
+                        type = TypeOperationCaisse.RETRAIT,
+                        mode = f.modePaiement,
+                        montant = f.montant,
+                        documentType = DOCUMENT_FINANCEMENT,
+                        documentId = f.id,
+                        libelle = "Annulation ${f.numero}",
+                        createdBy = auteur.id,
+                    )
+                )
+            }
+            val date = maintenant()
+            financementDao.modifier(
+                f.copy(statut = StatutFinancement.ANNULE, dateAnnulation = date, annulePar = auteur.id, motifAnnulation = texte, updatedAt = date)
+            )
+            comptable.contrePasser(PieceComptable(DOCUMENT_FINANCEMENT, f.id), "Annulation ${f.numero}")
+            audit.enregistrer(ActionAudit.ANNULATION_FINANCEMENT, "${f.numero} : $texte")
+        }
+    }
+
+    private fun libelleFinancement(f: FinancementEntity) = when (f.type) {
+        TypeFinancement.CAPITAL -> "Injection de capital ${f.tiers} (${f.numero})"
+        TypeFinancement.EMPRUNT -> "Emprunt ${f.tiers} (${f.numero})"
+    }
+
     /**
      * Opération dans la caisse ouverte de [pointVenteId] pour un règlement en espèces ou mobile money ;
      * aucune pour la banque / hors caisse. Une sortie d'espèces ne peut pas dépasser les espèces en caisse.
@@ -370,5 +553,9 @@ class FinanceRepository(
         private const val PREFIXE_DEPENSE = "DP"
         private const val PREFIXE_PAIEMENT = "PF"
         private const val PREFIXE_ENCAISSEMENT = "EC"
+        const val DOCUMENT_FINANCEMENT = "FINANCEMENT"
+        const val DOCUMENT_REMBOURSEMENT_EMPRUNT = "REMBOURSEMENT_EMPRUNT"
+        private const val PREFIXE_FINANCEMENT = "FI"
+        private const val PREFIXE_REMBOURSEMENT = "RE"
     }
 }
