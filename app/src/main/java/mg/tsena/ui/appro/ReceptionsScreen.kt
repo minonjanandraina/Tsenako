@@ -411,7 +411,7 @@ class ReceptionViewModel(
         retournables.value.forEach { l ->
             val texte = saisies[l.ligne.id]?.takeIf { it.isNotBlank() } ?: return@forEach
             quantites[l.ligne.id] = Quantite.parser(texte, l.uniteDecimale) ?: run {
-                erreur = "Quantité invalide pour « ${l.nom} »."
+                erreur = "Quantité invalide pour « ${libelleProduit(l.code, l.nom)} »."
                 return
             }
         }
@@ -488,6 +488,7 @@ fun ReceptionScreen(
             item { TitreSection("Produits reçus") }
             items(lignes, key = { it.ligne.id }) { l ->
                 LigneDocument(
+                    code = l.code,
                     nom = l.nom,
                     photo = vm.fichierPhoto(l.photoChemin),
                     quantite = "${Quantite.formater(l.ligne.quantiteMilli)} ${l.uniteSymbole} × ${Montant.formater(l.ligne.prixUnitaire)}",
@@ -548,7 +549,7 @@ private fun RetourFournisseurDialog(
                     ChampTexte(
                         saisies[l.ligne.id].orEmpty(),
                         { saisies[l.ligne.id] = it },
-                        "${l.nom} (au plus ${Quantite.formater(reste)} ${l.uniteSymbole})",
+                        "${libelleProduit(l.code, l.nom)} (au plus ${Quantite.formater(reste)} ${l.uniteSymbole})",
                         Modifier.fillMaxWidth(),
                         if (l.uniteDecimale) KeyboardType.Decimal else KeyboardType.Number,
                     )

@@ -219,6 +219,7 @@ data class FournisseurAvecSolde(
 
 data class ConversionAvecUnite(
     @Embedded val conversion: ConversionUniteEntity,
+    @ColumnInfo(name = "produit_code") val produitCode: String,
     @ColumnInfo(name = "produit_nom") val produitNom: String,
     @ColumnInfo(name = "unite_symbole") val uniteSymbole: String,
     @ColumnInfo(name = "unite_decimale") val uniteDecimale: Boolean,

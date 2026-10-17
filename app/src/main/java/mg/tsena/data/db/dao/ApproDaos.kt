@@ -58,7 +58,7 @@ interface FournisseurDao {
 interface ConversionUniteDao {
     @Query(
         """
-        SELECT c.*, p.nom AS produit_nom, u.symbole AS unite_symbole, u.decimale AS unite_decimale,
+        SELECT c.*, p.code AS produit_code, p.nom AS produit_nom, u.symbole AS unite_symbole, u.decimale AS unite_decimale,
                up.symbole AS unite_produit_symbole
         FROM conversion_unite c
         JOIN produit p ON p.id = c.produit_id

@@ -470,6 +470,7 @@ fun CommandeScreen(
             items(lignes, key = { it.ligne.id }) { l ->
                 val suivi = c.commande.statut != StatutCommande.BROUILLON && c.commande.statut != StatutCommande.ANNULEE
                 LigneDocument(
+                    code = l.code,
                     nom = l.nom,
                     photo = vm.fichierPhoto(l.photoChemin),
                     quantite = "${Quantite.formater(l.ligne.quantiteMilli)} ${l.uniteSymbole} × ${Montant.formater(l.ligne.prixUnitaire)}",
@@ -525,7 +526,7 @@ private fun texteBonCommande(nomCommerce: String, c: CommandeAvecDetails, lignes
         appendLine()
         lignes.forEach { l ->
             appendLine(
-                "- ${l.nom} : ${Quantite.formater(l.ligne.quantiteMilli)} ${l.uniteSymbole}" +
+                "- ${libelleProduit(l.code, l.nom)} : ${Quantite.formater(l.ligne.quantiteMilli)} ${l.uniteSymbole}" +
                     if (l.ligne.montant > 0) " × ${Montant.formater(l.ligne.prixUnitaire)} = ${Montant.formater(l.ligne.montant)}" else ""
             )
         }
@@ -574,6 +575,7 @@ fun androidx.compose.foundation.lazy.LazyListScope.lignesEditables(
     }
     items(editeur.lignes, key = { it.produitId }) { l ->
         LigneDocument(
+            code = l.code,
             nom = l.nom,
             photo = fichierPhoto(l.photoChemin),
             quantite = "${Quantite.formater(l.quantiteMilli)} ${l.uniteSymbole}",

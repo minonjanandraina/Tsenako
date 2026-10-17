@@ -339,7 +339,7 @@ class TransfertViewModel(
         lignes.value.forEach { l ->
             val texte = saisies[l.ligne.id] ?: return@forEach
             quantites[l.ligne.id] = Quantite.parser(texte, l.uniteDecimale) ?: run {
-                erreur = "Quantité reçue invalide pour « ${l.nom} »."
+                erreur = "Quantité reçue invalide pour « ${libelleProduit(l.code, l.nom)} »."
                 return
             }
         }
@@ -427,6 +427,7 @@ fun TransfertScreen(
                 val recue = l.ligne.quantiteRecueMilli
                 val manque = recue?.let { l.ligne.quantiteEnvoyeeMilli - it } ?: 0L
                 LigneDocument(
+                    code = l.code,
                     nom = l.nom,
                     photo = vm.fichierPhoto(l.photoChemin),
                     quantite = "Envoyé : ${Quantite.formater(l.ligne.quantiteEnvoyeeMilli)} ${l.uniteSymbole}",
@@ -485,7 +486,7 @@ private fun ReceptionTransfertDialog(
                     ChampTexte(
                         saisies[l.ligne.id].orEmpty(),
                         { saisies[l.ligne.id] = it },
-                        "${l.nom} (${l.uniteSymbole}, envoyé : ${Quantite.formater(l.ligne.quantiteEnvoyeeMilli)})",
+                        "${libelleProduit(l.code, l.nom)} (${l.uniteSymbole}, envoyé : ${Quantite.formater(l.ligne.quantiteEnvoyeeMilli)})",
                         Modifier.fillMaxWidth(),
                         if (l.uniteDecimale) KeyboardType.Decimal else KeyboardType.Number,
                     )

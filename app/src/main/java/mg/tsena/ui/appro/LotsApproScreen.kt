@@ -371,7 +371,7 @@ fun LotApproScreen(
             }
             items(lignes, key = { it.produitId }) { ligne ->
                 ListItem(
-                    headlineContent = { Text(ligne.nom) },
+                    headlineContent = { Text(libelleProduit(ligne.code, ligne.nom)) },
                     supportingContent = {
                         Column {
                             Text("Acheté : ${Quantite.formater(ligne.quantiteAcheteeMilli)} ${ligne.uniteSymbole}")
@@ -425,7 +425,7 @@ fun LotApproScreen(
         var motif by rememberSaveable(ligneChoisie.produitId) { mutableStateOf(ligneChoisie.motifEcart.orEmpty()) }
         AlertDialog(
             onDismissRequest = { ligneEnEtiquetage = null },
-            title = { Text(ligneChoisie.nom) },
+            title = { Text(libelleProduit(ligneChoisie.code, ligneChoisie.nom)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(

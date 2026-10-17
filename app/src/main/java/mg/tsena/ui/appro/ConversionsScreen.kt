@@ -157,7 +157,7 @@ fun ConversionsScreen(onRetour: () -> Unit, vm: ConversionsViewModel = viewModel
             if (conversions.isEmpty()) item { Text("Aucune unité d'achat.", Modifier.padding(horizontal = 16.dp)) }
             items(conversions, key = { it.conversion.id }) { c ->
                 ListItem(
-                    headlineContent = { Text(c.produitNom) },
+                    headlineContent = { Text(libelleProduit(c.produitCode, c.produitNom)) },
                     supportingContent = { Text("1 ${c.uniteSymbole} = ${Quantite.formater(c.conversion.facteurMilli)} ${c.uniteProduitSymbole}") },
                     trailingContent = {
                         IconButton(onClick = { vm.demanderSuppression(c) }) { Icon(Icons.Filled.Delete, contentDescription = "Supprimer") }
@@ -181,9 +181,9 @@ fun ConversionsScreen(onRetour: () -> Unit, vm: ConversionsViewModel = viewModel
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Selecteur(
                         libelle = "Produit",
-                        valeurAffichee = produit?.produit?.nom.orEmpty(),
+                        valeurAffichee = produit?.let { libelleProduit(it.produit.code, it.produit.nom) }.orEmpty(),
                         options = produits,
-                        texte = { "${it.produit.nom} (${it.uniteSymbole})" },
+                        texte = { "${libelleProduit(it.produit.code, it.produit.nom)} (${it.uniteSymbole})" },
                         onSelection = { produitId = it.produit.id },
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -217,7 +217,7 @@ fun ConversionsScreen(onRetour: () -> Unit, vm: ConversionsViewModel = viewModel
             title = { Text("Supprimer cette unité d'achat ?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${c.produitNom} : 1 ${c.uniteSymbole} = ${Quantite.formater(c.conversion.facteurMilli)} ${c.uniteProduitSymbole}")
+                    Text("${libelleProduit(c.produitCode, c.produitNom)} : 1 ${c.uniteSymbole} = ${Quantite.formater(c.conversion.facteurMilli)} ${c.uniteProduitSymbole}")
                     Text("Les documents déjà saisis ne sont pas modifiés.", style = MaterialTheme.typography.bodySmall)
                     vm.erreur?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 }

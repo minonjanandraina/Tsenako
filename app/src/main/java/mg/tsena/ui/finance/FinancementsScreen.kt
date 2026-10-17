@@ -67,6 +67,7 @@ import mg.tsena.domain.formaterDateHeure
 import mg.tsena.finance.CoffreRepository
 import mg.tsena.finance.FinanceRepository
 import mg.tsena.ui.common.ChampTexte
+import mg.tsena.ui.common.masquerClavierAuToucher
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -268,6 +269,7 @@ fun FinancementsScreen(onRetour: () -> Unit, vm: FinancementsViewModel = viewMod
             var motif by rememberSaveable { mutableStateOf("") }
             AlertDialog(
                 onDismissRequest = vm::fermer,
+                modifier = Modifier.masquerClavierAuToucher(),
                 title = { Text("Annuler ${f.financement.numero} ?") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -346,6 +348,7 @@ private fun NouveauFinancementDialog(vm: FinancementsViewModel, caisses: List<Se
 
     AlertDialog(
         onDismissRequest = vm::fermer,
+        modifier = Modifier.masquerClavierAuToucher(),
         title = { Text(if (emprunt) "Nouvel emprunt" else "Injection de capital") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -399,6 +402,7 @@ private fun RemboursementDialog(
 
     AlertDialog(
         onDismissRequest = vm::fermer,
+        modifier = Modifier.masquerClavierAuToucher(),
         title = { Text("Rembourser ${f.financement.tiers}") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -60,6 +60,9 @@ data class LigneSaisie(
     /** Prix d'achat de la fiche produit, proposé pour une nouvelle ligne */
     val prixAchat: Long? = null,
 ) {
+    /** Code et nom du produit, affichés ensemble tout au long de l'appro */
+    val libelle: String get() = libelleProduit(code, nom)
+
     fun versAchat() = LigneAchat(produitId, quantiteMilli, montant)
     fun versEnvoi() = LigneEnvoi(produitId, quantiteMilli)
 
@@ -140,8 +143,8 @@ fun ChoixProduitDialog(
                 LazyColumn(Modifier.heightIn(max = 400.dp)) {
                     items(filtres, key = { it.produitId }) { p ->
                         ListItem(
-                            headlineContent = { Text(p.nom) },
-                            supportingContent = { Text("${p.code} · $libelleStock : ${Quantite.formater(p.quantiteMilli)} ${p.uniteSymbole}") },
+                            headlineContent = { Text(libelleProduit(p.code, p.nom)) },
+                            supportingContent = { Text("$libelleStock : ${Quantite.formater(p.quantiteMilli)} ${p.uniteSymbole}") },
                             leadingContent = { PhotoProduit(fichierPhoto(p.photoChemin), Modifier.size(40.dp)) },
                             modifier = Modifier.clickable { onChoisir(p) },
                         )
@@ -218,7 +221,7 @@ fun LigneDialog(
 
     AlertDialog(
         onDismissRequest = onAnnuler,
-        title = { Text(ligne.nom) },
+        title = { Text(ligne.libelle) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 information?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
@@ -269,12 +272,16 @@ fun LigneDialog(
     )
 }
 
+/** Libellé d'un produit dans les écrans d'appro : le code est toujours affiché avec le nom. */
+fun libelleProduit(code: String, nom: String): String = "$code · $nom"
+
 fun libelleConversion(c: ConversionAvecUnite): String =
     "${c.uniteSymbole} (${Quantite.formater(c.conversion.facteurMilli)} ${c.uniteProduitSymbole})"
 
 /** Ligne de document affichée dans un formulaire ou une fiche. */
 @Composable
 fun LigneDocument(
+    code: String,
     nom: String,
     photo: File,
     quantite: String,
@@ -284,7 +291,7 @@ fun LigneDocument(
     complement: String? = null,
 ) {
     ListItem(
-        headlineContent = { Text(nom) },
+        headlineContent = { Text(libelleProduit(code, nom)) },
         supportingContent = {
             Column {
                 Text(listOfNotNull(quantite, detail).joinToString(" · "))
