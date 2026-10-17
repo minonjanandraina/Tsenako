@@ -245,6 +245,7 @@ data class ReceptionAPayer(
 
 data class LigneReceptionRetournable(
     @Embedded val ligne: LigneReceptionEntity,
+    val code: String,
     val nom: String,
     @ColumnInfo(name = "unite_symbole") val uniteSymbole: String,
     @ColumnInfo(name = "unite_decimale") val uniteDecimale: Boolean,

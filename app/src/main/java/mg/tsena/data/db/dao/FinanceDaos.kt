@@ -142,7 +142,7 @@ interface RetourFournisseurDao {
 
     @Query(
         """
-        SELECT l.*, p.nom, u.symbole AS unite_symbole, u.decimale AS unite_decimale
+        SELECT l.*, p.code, p.nom, u.symbole AS unite_symbole, u.decimale AS unite_decimale
         FROM ligne_reception l
         JOIN produit p ON p.id = l.produit_id
         JOIN unite u ON u.id = p.unite_id
