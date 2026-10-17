@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# contents: write pour publier l'APK de test dans Releases
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -38,6 +42,18 @@ jobs:
         with:
           name: tsena-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+
+      # APK de test téléchargeable directement (sans zip) : Releases > « Dernière version de test »
+      - name: Publier l'APK de test
+        if: success() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp app/build/outputs/apk/debug/*.apk tsena-test.apk
+          gh release delete test --yes --cleanup-tag || true
+          gh release create test tsena-test.apk --prerelease --target "$GITHUB_SHA" \
+            --title "Dernière version de test" \
+            --notes "APK de test (debug) du commit ${GITHUB_SHA::7} : $(git log -1 --format=%s). Désinstaller l'ancienne version si la base a changé."
 
       - uses: actions/upload-artifact@v4
         if: always()
