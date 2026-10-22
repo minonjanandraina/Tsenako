@@ -2,6 +2,7 @@ package mg.tsena.ui.appro
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -58,6 +60,8 @@ import mg.tsena.domain.formaterDateHeure
 import mg.tsena.domain.maintenant
 import mg.tsena.finance.Echeances
 import mg.tsena.data.db.entity.SourceFonds
+import mg.tsena.banque.BanqueRepository
+import mg.tsena.data.db.entity.CompteBancaireEntity
 import mg.tsena.finance.CoffreRepository
 import mg.tsena.finance.FinanceRepository
 import mg.tsena.ui.common.ChampTexte
@@ -69,6 +73,7 @@ class FournisseurViewModel(
     private val appro: ApproRepository,
     private val finance: FinanceRepository,
     coffre: CoffreRepository,
+    private val banque: BanqueRepository,
 ) : ViewModel() {
     val fournisseur: StateFlow<FournisseurAvecSolde?> = appro.observerFournisseurs()
         .map { liste -> liste.firstOrNull { it.fournisseur.id == fournisseurId } }
@@ -83,6 +88,11 @@ class FournisseurViewModel(
     val soldesCoffre: StateFlow<Map<ModePaiement, Long>> = coffre.observerSoldes()
         .map { liste -> liste.associate { it.mode to it.solde } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    val compteTsenako: StateFlow<CompteBancaireEntity?> = banque.observerCompte()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val soldeTsenako: StateFlow<Long> = banque.observerSolde()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
     enum class Dialogue { MODIFIER, PAYER }
 
@@ -113,9 +123,9 @@ class FournisseurViewModel(
         dialogue = null
     }
 
-    fun enregistrer(nom: String, telephone: String, adresse: String, nif: String, delai: String, actif: Boolean) {
+    fun enregistrer(nom: String, telephone: String, adresse: String, nif: String, delai: String, idTsenako: String, actif: Boolean) {
         val jours = delai.trim().ifEmpty { "0" }.toIntOrNull() ?: run { erreur = "Délai de paiement invalide (nombre de jours)."; return }
-        executer { appro.enregistrerFournisseur(fournisseurId, nom, telephone, adresse, nif, jours, actif) }
+        executer { appro.enregistrerFournisseur(fournisseurId, nom, telephone, adresse, nif, jours, actif, idTsenako) }
     }
 
     fun enregistrerPaiement(montantTexte: String, mode: ModePaiement, pointVenteId: String?, reference: String, source: SourceFonds) {
@@ -124,6 +134,16 @@ class FournisseurViewModel(
         executer {
             finance.payerFournisseur(fournisseurId, receptionId, montant, mode, pointVenteId, reference, source)
             message = "Paiement de ${Montant.formater(montant)} enregistré."
+        }
+    }
+
+    /** Virement depuis le compte Tsenako vers l'id Tsenako du fournisseur (RG-B4, RG-B6). */
+    fun enregistrerPaiementTsenako(montantTexte: String, reference: String) {
+        val montant = Montant.parser(montantTexte) ?: run { erreur = "Montant invalide."; return }
+        val receptionId = receptionAPayer?.reception?.id
+        executer {
+            banque.payerFournisseur(fournisseurId, receptionId, montant, reference)
+            message = "Virement Tsenako de ${Montant.formater(montant)} envoyé."
         }
     }
 
@@ -141,7 +161,11 @@ class FournisseurViewModel(
 
     companion object {
         fun factory(fournisseurId: String) = viewModelFactory {
-            initializer { FournisseurViewModel(fournisseurId, container.approRepository, container.financeRepository, container.coffreRepository) }
+            initializer {
+                FournisseurViewModel(
+                    fournisseurId, container.approRepository, container.financeRepository, container.coffreRepository, container.banqueRepository,
+                )
+            }
         }
     }
 }
@@ -153,6 +177,8 @@ fun FournisseurScreen(
     peutPayer: Boolean,
     onRetour: () -> Unit,
     onReception: (receptionId: String) -> Unit,
+    /** Virement depuis le compte Tsenako (permission GERER_BANQUE) */
+    peutPayerTsenako: Boolean = false,
     vm: FournisseurViewModel = viewModel(key = "fournisseur_$fournisseurId", factory = FournisseurViewModel.factory(fournisseurId)),
 ) {
     val fournisseur by vm.fournisseur.collectAsStateWithLifecycle()
@@ -160,6 +186,8 @@ fun FournisseurScreen(
     val paiements by vm.paiements.collectAsStateWithLifecycle()
     val caisses by vm.caisses.collectAsStateWithLifecycle()
     val soldesCoffre by vm.soldesCoffre.collectAsStateWithLifecycle()
+    val compteTsenako by vm.compteTsenako.collectAsStateWithLifecycle()
+    val soldeTsenako by vm.soldeTsenako.collectAsStateWithLifecycle()
     val f = fournisseur
     val maintenant = maintenant()
     val aPayer = receptions.filter { it.reste > 0 }
@@ -192,6 +220,7 @@ fun FournisseurScreen(
                         LigneInfo("Téléphone", f.fournisseur.telephone?.let(Telephone::formater) ?: "—")
                         f.fournisseur.adresse?.let { LigneInfo("Adresse", it) }
                         f.fournisseur.nif?.let { LigneInfo("NIF", it) }
+                        LigneInfo("Id Tsenako", f.fournisseur.idTsenako ?: "—")
                         LigneInfo("Paiement", if (f.fournisseur.delaiPaiementJours == 0) "Comptant" else "${f.fournisseur.delaiPaiementJours} jours")
                         LigneInfo("Achats", Montant.formater(f.totalAchats))
                         if (f.totalRetours > 0) LigneInfo("Retours", "−" + Montant.formater(f.totalRetours))
@@ -258,9 +287,13 @@ fun FournisseurScreen(
             receptionInitiale = vm.receptionAPayer,
             caisses = caisses,
             soldesCoffre = soldesCoffre,
+            tsenako = compteTsenako?.takeIf { peutPayerTsenako },
+            soldeTsenako = soldeTsenako,
+            idTsenakoFournisseur = f?.fournisseur?.idTsenako,
             erreur = vm.erreur,
             onReception = { vm.payer(it) },
             onValider = vm::enregistrerPaiement,
+            onValiderTsenako = vm::enregistrerPaiementTsenako,
             onAnnuler = vm::fermer,
         )
         null -> Unit
@@ -274,9 +307,14 @@ private fun PaiementFournisseurDialog(
     receptionInitiale: ReceptionAPayer?,
     caisses: List<SessionAvecDetails>,
     soldesCoffre: Map<ModePaiement, Long>,
+    /** Compte Tsenako ouvert, si l'utilisateur peut payer avec ; null = choix non proposé */
+    tsenako: CompteBancaireEntity?,
+    soldeTsenako: Long,
+    idTsenakoFournisseur: String?,
     erreur: String?,
     onReception: (ReceptionAPayer?) -> Unit,
     onValider: (montant: String, mode: ModePaiement, pointVenteId: String?, reference: String, source: SourceFonds) -> Unit,
+    onValiderTsenako: (montant: String, reference: String) -> Unit,
     onAnnuler: () -> Unit,
 ) {
     val maximum = receptionInitiale?.reste ?: soldeDu
@@ -285,6 +323,8 @@ private fun PaiementFournisseurDialog(
     var pointVenteId by rememberSaveable { mutableStateOf<String?>(null) }
     var source by rememberSaveable { mutableStateOf(SourceFonds.CAISSE) }
     var reference by rememberSaveable { mutableStateOf("") }
+    var parTsenako by rememberSaveable { mutableStateOf(false) }
+    val virement = parTsenako && tsenako != null
     val pvEffectif = pointVenteId ?: caisses.firstOrNull()?.pointVenteId
     val options: List<ReceptionAPayer?> = receptions + listOf(null)
 
@@ -303,15 +343,38 @@ private fun PaiementFournisseurDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 ChampTexte(montant, { montant = it }, "Montant (au plus ${Montant.formater(maximum)})", Modifier.fillMaxWidth(), KeyboardType.Number)
-                ChoixReglement(
-                    mode, { mode = it }, caisses, pvEffectif, { pointVenteId = it },
-                    source = source, onSource = { source = it }, soldesCoffre = soldesCoffre,
-                )
+                if (tsenako != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = !virement, onClick = { parTsenako = false }, label = { Text("Espèces, mobile money…") })
+                        FilterChip(selected = virement, onClick = { parTsenako = true }, label = { Text("Compte Tsenako") })
+                    }
+                }
+                if (virement) {
+                    Text("Sur votre compte Tsenako : ${Montant.formater(soldeTsenako)}", style = MaterialTheme.typography.bodySmall)
+                    if (idTsenakoFournisseur == null) {
+                        Text(
+                            "Ce fournisseur n'a pas d'id Tsenako : renseignez-le dans sa fiche (bouton Modifier) ou payez-le en espèces.",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    } else {
+                        Text("Virement vers l'id Tsenako $idTsenakoFournisseur", style = MaterialTheme.typography.bodySmall)
+                    }
+                } else {
+                    ChoixReglement(
+                        mode, { mode = it }, caisses, pvEffectif, { pointVenteId = it },
+                        source = source, onSource = { source = it }, soldesCoffre = soldesCoffre,
+                    )
+                }
                 ChampTexte(reference, { reference = it }, "Référence (facultatif)", Modifier.fillMaxWidth())
                 erreur?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = { TextButton(onClick = { onValider(montant, mode, pvEffectif, reference, source) }) { Text("Payer") } },
+        confirmButton = {
+            TextButton(
+                onClick = { if (virement) onValiderTsenako(montant, reference) else onValider(montant, mode, pvEffectif, reference, source) },
+                enabled = !virement || idTsenakoFournisseur != null,
+            ) { Text("Payer") }
+        },
         dismissButton = { TextButton(onClick = onAnnuler) { Text("Annuler") } },
     )
 }

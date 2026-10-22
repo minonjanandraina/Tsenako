@@ -47,6 +47,9 @@ interface FournisseurDao {
     @Query("SELECT COUNT(*) FROM fournisseur WHERE deleted_at IS NULL AND nom = :nom COLLATE NOCASE AND id != :exclureId")
     suspend fun compterParNom(nom: String, exclureId: String): Int
 
+    @Query("SELECT COUNT(*) FROM fournisseur WHERE deleted_at IS NULL AND id_tsenako = :idTsenako AND id != :exclureId")
+    suspend fun compterParIdTsenako(idTsenako: String, exclureId: String): Int
+
     @Insert
     suspend fun inserer(fournisseur: FournisseurEntity)
 

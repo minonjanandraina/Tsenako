@@ -32,6 +32,8 @@ data class FournisseurEntity(
     val nif: String? = null,
     /** Conditions de paiement, en jours (0 = comptant) */
     @ColumnInfo(name = "delai_paiement_jours") val delaiPaiementJours: Int = 0,
+    /** Numéro de compte Tsenako du fournisseur, destinataire de nos virements (RG-B6) */
+    @ColumnInfo(name = "id_tsenako") val idTsenako: String? = null,
     val actif: Boolean = true,
     @ColumnInfo(name = "created_at") val createdAt: Long = maintenant(),
     @ColumnInfo(name = "updated_at") val updatedAt: Long = createdAt,

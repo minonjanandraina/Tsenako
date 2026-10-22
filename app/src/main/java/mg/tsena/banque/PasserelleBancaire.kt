@@ -14,6 +14,8 @@ data class OrdreBancaire(
     val libelle: String,
     /** Nom du bénéficiaire d'un virement sortant */
     val beneficiaire: String? = null,
+    /** Compte Tsenako du bénéficiaire d'un virement sortant */
+    val compteBeneficiaire: String? = null,
 )
 
 /**

@@ -79,7 +79,7 @@ class FournisseursViewModel(private val appro: ApproRepository) : ViewModel() {
         edition = null
     }
 
-    fun enregistrer(nom: String, telephone: String, adresse: String, nif: String, delai: String, actif: Boolean) {
+    fun enregistrer(nom: String, telephone: String, adresse: String, nif: String, delai: String, idTsenako: String, actif: Boolean) {
         val jours = delai.trim().ifEmpty { "0" }.toIntOrNull() ?: run {
             erreur = "Délai de paiement invalide (nombre de jours)."
             return
@@ -87,7 +87,7 @@ class FournisseursViewModel(private val appro: ApproRepository) : ViewModel() {
         val id = (edition as? Edition.Existant)?.fournisseur?.id
         viewModelScope.launch {
             try {
-                appro.enregistrerFournisseur(id, nom, telephone, adresse, nif, jours, actif)
+                appro.enregistrerFournisseur(id, nom, telephone, adresse, nif, jours, actif, idTsenako)
                 edition = null
             } catch (e: RegleMetierException) {
                 erreur = e.message
@@ -171,7 +171,7 @@ fun FournisseursScreen(
 fun FournisseurDialog(
     fournisseur: FournisseurEntity?,
     erreur: String?,
-    onValider: (nom: String, telephone: String, adresse: String, nif: String, delai: String, actif: Boolean) -> Unit,
+    onValider: (nom: String, telephone: String, adresse: String, nif: String, delai: String, idTsenako: String, actif: Boolean) -> Unit,
     onAnnuler: () -> Unit,
 ) {
     var nom by rememberSaveable { mutableStateOf(fournisseur?.nom.orEmpty()) }
@@ -179,6 +179,7 @@ fun FournisseurDialog(
     var adresse by rememberSaveable { mutableStateOf(fournisseur?.adresse.orEmpty()) }
     var nif by rememberSaveable { mutableStateOf(fournisseur?.nif.orEmpty()) }
     var delai by rememberSaveable { mutableStateOf(fournisseur?.delaiPaiementJours?.takeIf { it > 0 }?.toString().orEmpty()) }
+    var idTsenako by rememberSaveable { mutableStateOf(fournisseur?.idTsenako.orEmpty()) }
     var actif by rememberSaveable { mutableStateOf(fournisseur?.actif ?: true) }
 
     AlertDialog(
@@ -191,6 +192,8 @@ fun FournisseurDialog(
                 ChampTexte(adresse, { adresse = it }, "Adresse (facultatif)", Modifier.fillMaxWidth())
                 ChampTexte(nif, { nif = it }, "NIF (facultatif)", Modifier.fillMaxWidth())
                 ChampTexte(delai, { delai = it }, "Délai de paiement en jours (vide = comptant)", Modifier.fillMaxWidth(), KeyboardType.Number)
+                ChampTexte(idTsenako, { idTsenako = it }, "Id Tsenako (n° de compte, facultatif)", Modifier.fillMaxWidth())
+                Text("Pour le payer par virement depuis votre compte Tsenako.", style = MaterialTheme.typography.bodySmall)
                 if (fournisseur != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Actif", Modifier.weight(1f))
@@ -200,7 +203,7 @@ fun FournisseurDialog(
                 erreur?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = { TextButton(onClick = { onValider(nom, telephone, adresse, nif, delai, actif) }) { Text("Enregistrer") } },
+        confirmButton = { TextButton(onClick = { onValider(nom, telephone, adresse, nif, delai, idTsenako, actif) }) { Text("Enregistrer") } },
         dismissButton = { TextButton(onClick = onAnnuler) { Text("Annuler") } },
     )
 }

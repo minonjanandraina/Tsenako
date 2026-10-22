@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 import mg.tsena.auth.ActionAudit
 import mg.tsena.auth.AuditLogger
 import mg.tsena.auth.SessionManager
+import mg.tsena.banque.IdTsenako
 import mg.tsena.compta.Comptable
 import mg.tsena.compta.PieceComptable
 import mg.tsena.compta.ReglesComptables
@@ -77,6 +78,7 @@ class ApproRepository(
         nif: String,
         delaiPaiementJours: Int,
         actif: Boolean,
+        idTsenako: String = "",
     ) {
         val auteur = session.exiger(Permission.GERER_APPRO)
         val nomPropre = nom.trim()
@@ -85,9 +87,15 @@ class ApproRepository(
             Telephone.normaliser(it) ?: throw RegleMetierException("Numéro de téléphone invalide (ex. 034 12 345 67).")
         }
         if (delaiPaiementJours < 0) throw RegleMetierException("Le délai de paiement ne peut pas être négatif.")
+        val compteTsenako = idTsenako.trim().ifEmpty { null }?.let {
+            IdTsenako.normaliser(it) ?: throw RegleMetierException("Id Tsenako invalide (ex. LILO-0123456789).")
+        }
         db.withTransaction {
             if (fournisseurDao.compterParNom(nomPropre, id ?: "") > 0) {
                 throw RegleMetierException("Le fournisseur « $nomPropre » existe déjà.")
+            }
+            if (compteTsenako != null && fournisseurDao.compterParIdTsenako(compteTsenako, id ?: "") > 0) {
+                throw RegleMetierException("L'id Tsenako $compteTsenako est déjà celui d'un autre fournisseur.")
             }
             if (id == null) {
                 fournisseurDao.inserer(
@@ -97,6 +105,7 @@ class ApproRepository(
                         adresse = adresse.trim().ifEmpty { null },
                         nif = nif.trim().ifEmpty { null },
                         delaiPaiementJours = delaiPaiementJours,
+                        idTsenako = compteTsenako,
                         createdBy = auteur.id,
                     )
                 )
@@ -110,6 +119,7 @@ class ApproRepository(
                         adresse = adresse.trim().ifEmpty { null },
                         nif = nif.trim().ifEmpty { null },
                         delaiPaiementJours = delaiPaiementJours,
+                        idTsenako = compteTsenako,
                         actif = actif,
                         updatedAt = maintenant(),
                     )

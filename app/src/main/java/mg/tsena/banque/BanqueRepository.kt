@@ -91,14 +91,19 @@ class BanqueRepository(
     }
 
     /**
-     * RG-B4 : virement à un fournisseur depuis le compte Tsenako, au plus son solde. Le paiement suit les règles
-     * RG-A9 (réception ou acompte, écriture 401 / 512) ; l'ordre ne part à la banque qu'une fois tout vérifié.
+     * RG-B4 : virement à un fournisseur depuis le compte Tsenako, au plus son solde, vers son id Tsenako (RG-B6).
+     * Le paiement suit les règles RG-A9 (réception ou acompte, écriture 401 / 512) ; l'ordre ne part à la banque
+     * qu'une fois tout vérifié.
      */
     suspend fun payerFournisseur(fournisseurId: String, receptionId: String?, montant: Long, reference: String) {
         val auteur = session.exiger(Permission.GERER_BANQUE)
         if (montant <= 0) throw RegleMetierException("Le montant doit être supérieur à zéro.")
         db.withTransaction {
             val compte = exigerCompte()
+            val fournisseur = db.fournisseurDao().get(fournisseurId) ?: throw RegleMetierException("Fournisseur introuvable.")
+            val destinataire = fournisseur.idTsenako
+                ?: throw RegleMetierException("${fournisseur.nom} n'a pas d'id Tsenako : renseignez-le dans sa fiche ou payez-le autrement.")
+            if (destinataire == compte.numero) throw RegleMetierException("L'id Tsenako de ${fournisseur.nom} est votre propre compte.")
             val solde = dao.solde(compte.id)
             if (montant > solde) {
                 throw RegleMetierException("Il n'y a que ${Montant.formater(solde)} sur le compte Tsenako. Approvisionnez-le d'abord.")
@@ -106,9 +111,11 @@ class BanqueRepository(
             val paiement = finance.payerFournisseur(
                 fournisseurId, receptionId, montant, ModePaiement.BANQUE, null, reference.trim().ifEmpty { "Compte Tsenako" },
             )
-            val fournisseur = db.fournisseurDao().get(fournisseurId)?.nom.orEmpty()
             val ref = passerelle.executer(
-                OrdreBancaire(compte.numero, montant, entree = false, libelle = "Paiement ${paiement.numero}", beneficiaire = fournisseur),
+                OrdreBancaire(
+                    compte.numero, montant, entree = false, libelle = "Paiement ${paiement.numero}",
+                    beneficiaire = fournisseur.nom, compteBeneficiaire = destinataire,
+                ),
             )
             val operation = OperationBancaireEntity(
                 numero = numero(dao.compterOperations() + 1),
@@ -116,13 +123,15 @@ class BanqueRepository(
                 type = TypeOperationBancaire.PAIEMENT_FOURNISSEUR,
                 montant = montant,
                 reference = ref,
-                libelle = "Paiement $fournisseur (${paiement.numero})",
+                libelle = "Paiement ${fournisseur.nom} → $destinataire (${paiement.numero})",
                 documentType = FinanceRepository.DOCUMENT_PAIEMENT_FOURNISSEUR,
                 documentId = paiement.id,
                 createdBy = auteur.id,
             )
             dao.insererOperation(operation)
-            audit.enregistrer(ActionAudit.VIREMENT_BANCAIRE, "${operation.numero} : $fournisseur, ${Montant.formater(montant)} ($ref)")
+            audit.enregistrer(
+                ActionAudit.VIREMENT_BANCAIRE, "${operation.numero} : ${fournisseur.nom} ($destinataire), ${Montant.formater(montant)} ($ref)",
+            )
         }
     }
 

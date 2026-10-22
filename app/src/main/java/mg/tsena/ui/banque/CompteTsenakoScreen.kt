@@ -349,7 +349,7 @@ private fun PaiementTsenakoDialog(
                         libelle = "Fournisseur",
                         valeurAffichee = fournisseur?.let { "${it.fournisseur.nom} (dû ${Montant.formater(it.solde)})" }.orEmpty(),
                         options = fournisseurs,
-                        texte = { "${it.fournisseur.nom} (dû ${Montant.formater(it.solde)})" },
+                        texte = { "${it.fournisseur.nom} (dû ${Montant.formater(it.solde)})" + if (it.fournisseur.idTsenako == null) " · sans id Tsenako" else "" },
                         onSelection = {
                             fournisseurId = it.fournisseur.id
                             receptionId = null
@@ -360,6 +360,12 @@ private fun PaiementTsenakoDialog(
                     )
                 }
                 if (fournisseur != null) {
+                    val id = fournisseur.fournisseur.idTsenako
+                    if (id == null) {
+                        Text("Ce fournisseur n'a pas d'id Tsenako : renseignez-le dans sa fiche.", color = MaterialTheme.colorScheme.error)
+                    } else {
+                        Text("Virement vers l'id Tsenako $id", style = MaterialTheme.typography.bodySmall)
+                    }
                     Selecteur(
                         libelle = "Pour",
                         valeurAffichee = libelleReception(reception),

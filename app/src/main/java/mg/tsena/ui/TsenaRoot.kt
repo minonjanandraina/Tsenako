@@ -259,6 +259,7 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
                 peutPayer = etat.utilisateur.peut(Permission.GERER_DEPENSES),
                 onRetour = { nav.popBackStack() },
                 onReception = { id -> nav.navigate(Routes.reception(id)) },
+                peutPayerTsenako = etat.utilisateur.peut(Permission.GERER_BANQUE),
             )
         }
         composable(Routes.CONVERSIONS) { ConversionsScreen(onRetour = { nav.popBackStack() }) }

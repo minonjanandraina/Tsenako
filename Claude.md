@@ -86,7 +86,8 @@ exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jama
 - **ligne_inventaire** : inventaire_id, produit_id, quantite_theorique, quantite_comptee (null = non compté), ecart
 
 ### 4.3 Fournisseurs
-- **fournisseur** : nom, téléphone (facultatif, format +261), adresse, NIF, delai_paiement_jours, actif
+- **fournisseur** : nom, téléphone (facultatif, format +261), adresse, NIF, delai_paiement_jours, id_tsenako (facultatif,
+  numéro de compte Tsenako du fournisseur, unique), actif
 - **paiement_fournisseur** : fournisseur_id, reception_id (nullable), montant, mode_paiement, caisse_session_id, date
 
 ### 4.4 Approvisionnement & transferts
@@ -337,6 +338,10 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
 - RG-B4 : **Paiement fournisseur** depuis le compte : au plus son solde, puis règles RG-A9 (réception ou acompte),
   paiement `PF` en mode `BANQUE` (401 / 512). Les vérifications locales passent d'abord ; l'ordre est envoyé à la banque
   en dernier, et un refus de la banque annule tout. Permission `GERER_BANQUE` (propriétaire, gérant).
+- RG-B6 : **Id Tsenako du fournisseur** : son numéro de compte Tsenako, saisi dans sa fiche (facultatif, unique, enregistré en
+  majuscules sans espaces, 6 à 34 caractères `A-Z 0-9 -`, `banque/IdTsenako`). Un virement Tsenako n'est possible que vers
+  un fournisseur qui en a un (et pas vers notre propre compte). Le paiement en espèces / mobile money / hors caisse reste
+  possible comme avant : dans « Payer le fournisseur », on choisit « Espèces, mobile money… » ou « Compte Tsenako ».
 - RG-B5 : Simulation (`LiloSimulee`) : aucun argent réel, numéros et références (`LLAAMMJJxxxxxx`) générés sur le
   téléphone, plafond de 50 000 000 Ar par opération. Le badge « Simulation » est affiché tant que la passerelle l'est.
 
@@ -562,3 +567,5 @@ transaction Room que le document (RG-K9). Les tests miroir sont dans `app/src/te
   commerce chez Lilo (simulée), information WTB / BTW, approvisionnement simulé (512 / 108), paiement des fournisseurs par
   virement (401 / 512) lié au paiement `PF` (RG-B1 à RG-B5). Passerelle bancaire abstraite pour brancher plus tard une
   vraie banque (banking as a platform). Schéma v1 modifié directement (désinstaller l'app de test).
+- **Id Tsenako fournisseur** (code écrit, non compilé localement) : champ id_tsenako dans la fiche fournisseur, virement
+  Tsenako vers cet id depuis la fiche (choix « Compte Tsenako » à côté des règlements habituels) ou l'écran Compte Tsenako (RG-B6).

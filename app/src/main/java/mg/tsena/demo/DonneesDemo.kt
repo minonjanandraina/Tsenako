@@ -120,7 +120,9 @@ class DonneesDemo(private val c: AppContainer) {
         }
 
         // Fournisseurs et unité d'achat
-        c.approRepository.enregistrerFournisseur(null, "Textiles Analakely", "0341122334", "Analakely, Antananarivo", "", 30, true)
+        c.approRepository.enregistrerFournisseur(
+            null, "Textiles Analakely", "0341122334", "Analakely, Antananarivo", "", 30, true, idTsenako = "LILO-0341122334",
+        )
         c.approRepository.enregistrerFournisseur(null, "Raphia Ambositra", "0321122334", "Ambositra", "", 0, true)
         c.approRepository.enregistrerFournisseur(null, "Friperie Mahajanga", "0331122334", "Mahajanga", "", 15, true)
         val fournisseurs = c.database.fournisseurDao().observerActifs().first().associateBy { it.nom }
