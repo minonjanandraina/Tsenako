@@ -56,6 +56,7 @@ enum class Module(val titre: String, val couleur: Color) {
     CREDITS("Crédits clients", Color(0xFFAD1457)),
     APPRO("Approvisionnement", Color(0xFF6D4C41)),
     DEPENSES("Dépenses", Color(0xFFC62828)),
+    BANQUE("Compte Tsenako", Color(0xFF2E7D32)),
     COMPTABILITE("Comptabilité", Color(0xFF6A1B9A)),
 }
 
@@ -79,6 +80,7 @@ fun iconeModule(module: Module): Painter = when (module) {
     Module.CREDITS -> painterResource(R.drawable.ic_credit)
     Module.APPRO -> painterResource(R.drawable.ic_appro)
     Module.DEPENSES -> painterResource(R.drawable.ic_depenses)
+    Module.BANQUE -> painterResource(R.drawable.ic_banque)
     Module.COMPTABILITE -> painterResource(R.drawable.ic_comptabilite)
 }
 
@@ -152,6 +154,12 @@ fun entreesModule(module: Module, u: UtilisateurConnecte, nbAlertes: Int, nbEnTr
         ) + si(
             Permission.GERER_COFFRE,
             EntreeModule("Coffre", "Argent versé à la clôture de caisse, apports et retraits", Routes.COFFRE) { rememberVectorPainter(Icons.Filled.Lock) },
+        )
+        Module.BANQUE -> si(
+            Permission.GERER_BANQUE,
+            EntreeModule("Compte Tsenako", "Solde, approvisionnement par mobile money, paiement des fournisseurs", Routes.BANQUE) {
+                painterResource(R.drawable.ic_banque)
+            },
         )
         Module.COMPTABILITE -> si(
             Permission.VOIR_COMPTABILITE,

@@ -128,6 +128,10 @@ object ReglesComptables {
     fun apportCoffre(montant: Long, mode: ModePaiement = ModePaiement.ESPECES): List<Imputation> =
         nettoyer(listOf(reglement(mode, debit = montant, source = SourceFonds.COFFRE), Imputation(EXPLOITANT, credit = montant)))
 
+    /** Approvisionnement du compte Tsenako par le propriétaire (WTB depuis son mobile money) : 512 / 108. */
+    fun approvisionnementBanque(montant: Long): List<Imputation> =
+        nettoyer(listOf(Imputation(BANQUE, debit = montant), Imputation(EXPLOITANT, credit = montant)))
+
     /** Retrait du propriétaire depuis le coffre : 108 / 532 (ou 517 en mobile money). */
     fun retraitCoffre(montant: Long, mode: ModePaiement = ModePaiement.ESPECES): List<Imputation> =
         nettoyer(listOf(Imputation(EXPLOITANT, debit = montant), reglement(mode, credit = montant, source = SourceFonds.COFFRE)))

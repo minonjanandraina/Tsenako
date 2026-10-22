@@ -10,6 +10,8 @@ import mg.tsena.auth.AuditLogger
 import mg.tsena.auth.AuthRepository
 import mg.tsena.auth.SessionManager
 import mg.tsena.backup.BackupManager
+import mg.tsena.banque.BanqueRepository
+import mg.tsena.banque.LiloSimulee
 import mg.tsena.catalogue.CatalogueRepository
 import mg.tsena.catalogue.PhotoManager
 import mg.tsena.compta.ComptaRepository
@@ -41,6 +43,8 @@ class AppContainer(context: Context) {
     val coffreRepository = CoffreRepository(database, session, audit, comptable)
     val venteRepository = VenteRepository(database, session, audit, authRepository, stockRepository, comptable, coffreRepository)
     val financeRepository = FinanceRepository(database, session, audit, comptable, coffreRepository)
+    /** Banque partenaire : Lilo simulée tant qu'aucune API bancaire réelle n'est branchée */
+    val banqueRepository = BanqueRepository(database, session, audit, comptable, financeRepository, LiloSimulee())
     val lotApproRepository = LotApproRepository(database, session, audit, approRepository, financeRepository, stockRepository)
     val comptaRepository = ComptaRepository(database, session, audit, comptable)
     val creditRepository = CreditRepository(database)

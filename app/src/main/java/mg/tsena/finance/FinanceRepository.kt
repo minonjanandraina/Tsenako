@@ -216,6 +216,7 @@ class FinanceRepository(
     /**
      * Paiement d'un fournisseur : rattaché à [receptionId] (au plus son reste à payer) ou en acompte général
      * (au plus le solde dû). Espèces / mobile money : décaissement dans la caisse ouverte de [pointVenteId].
+     * Renvoie le paiement enregistré.
      */
     suspend fun payerFournisseur(
         fournisseurId: String,
@@ -225,10 +226,10 @@ class FinanceRepository(
         pointVenteId: String?,
         reference: String,
         source: SourceFonds = SourceFonds.CAISSE,
-    ) {
+    ): PaiementFournisseurEntity {
         val auteur = session.exiger(Permission.GERER_DEPENSES)
         if (montant <= 0) throw RegleMetierException("Le montant doit être supérieur à zéro.")
-        db.withTransaction {
+        return db.withTransaction {
             val fournisseur = db.fournisseurDao().get(fournisseurId) ?: throw RegleMetierException("Fournisseur introuvable.")
             val solde = paiementDao.solde(fournisseurId)
             if (montant > solde) throw RegleMetierException("Le solde dû à ${fournisseur.nom} n'est que de ${Montant.formater(solde)}.")
@@ -253,12 +254,14 @@ class FinanceRepository(
                 sourceReelle, pointVenteId, mode, montant,
                 DOCUMENT_PAIEMENT_FOURNISSEUR, paiement.id, "Paiement ${fournisseur.nom} (${paiement.numero})", auteur.id,
             )
-            paiementDao.inserer(paiement.copy(sessionCaisseId = sessionId))
+            val enregistre = paiement.copy(sessionCaisseId = sessionId)
+            paiementDao.inserer(enregistre)
             comptable.passer(
                 ReglesComptables.journalReglement(mode), "Paiement ${fournisseur.nom} (${paiement.numero})",
                 ReglesComptables.paiementFournisseur(montant, mode, fournisseurId, sourceReelle), PieceComptable(DOCUMENT_PAIEMENT_FOURNISSEUR, paiement.id),
             )
             audit.enregistrer(ActionAudit.PAIEMENT_FOURNISSEUR, "${paiement.numero} : ${fournisseur.nom}, ${Montant.formater(montant)}")
+            enregistre
         }
     }
 

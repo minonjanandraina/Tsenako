@@ -174,6 +174,9 @@ class DonneesDemo(private val c: AppContainer) {
             categoriesDepense.getValue("Eau et électricité").id, 45_000, "Facture JIRAMA", ModePaiement.BANQUE, null, null,
         )
         c.financeRepository.payerFournisseur(textiles, reception, 150_000, ModePaiement.BANQUE, null, "Virement")
+        // Compte Tsenako (banque Lilo simulée) approvisionné par un WTB fictif
+        c.banqueRepository.ouvrirCompte()
+        c.banqueRepository.approvisionner(500_000)
     }
 
     /** Vente avec les prix de la boutique ; [paiements] reçoit le total net. */

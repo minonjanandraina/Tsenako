@@ -48,6 +48,13 @@ conforme aux standards internationaux.
 | M6 | Caisse | Sessions de caisse, encaissements, décaissements, clôture |
 | M7 | Charges & dépenses | Saisie et catégorisation des dépenses |
 | M8 | Comptabilité | Écritures en partie double, journaux, états financiers |
+| M9 | Compte Tsenako | Compte bancaire du commerce (banque partenaire Lilo, simulée), paiement des fournisseurs |
+
+### Vision : banking as a platform
+Tsena devient la porte d'entrée bancaire du petit marchand : chaque commerce a son **compte Tsenako**, tenu par une
+banque partenaire (Lilo d'abord), alimenté depuis le mobile money et utilisé pour payer les fournisseurs depuis l'app.
+L'app ne parle à la banque qu'à travers `banque/PasserelleBancaire` : aujourd'hui `LiloSimulee` (tout est local),
+demain l'API réelle de Lilo ou d'autres banques, sans toucher aux écrans ni à la comptabilité.
 
 ---
 
@@ -124,6 +131,12 @@ exprimés en **millièmes d'unité** (colonnes `_milli`, 1,5 kg = 1500) — jama
   statut (`VALIDE`, `ANNULE`) + date / auteur / motif d'annulation
 - **remboursement_emprunt** : numero (`RE-000001`), financement_id, capital, interets, mode_paiement, source,
   session_caisse_id (nullable), reference, date
+
+### 4.7 ter Compte Tsenako
+- **compte_bancaire** : banque (ex. Lilo), numero (attribué par la banque, `LILO-XXXXXXXXXX` en simulation, unique),
+  intitule (`Tsenako <commerce>`), titulaire — un seul compte par commerce
+- **operation_bancaire** : numero (`OB-000001`), compte_id, type (`APPROVISIONNEMENT`, `PAIEMENT_FOURNISSEUR`), montant,
+  reference (référence de transaction de la banque), libelle, document_type, document_id (paiement fournisseur), date
 
 ### 4.8 Comptabilité
 - **exercice** : date_debut, date_fin, statut (`OUVERT`, `CLOTURE`)
@@ -313,6 +326,20 @@ depense ─> operation_caisse ; tout document validé ─> ecriture (partie doub
   Comptabilité, raccourcis depuis le coffre et la caisse ouverte). Le reste à rembourser figure au tableau de bord ;
   au bilan, les comptes 16 forment le poste « Emprunts et dettes financières » (hors capitaux propres).
 
+### 5.8 ter Compte Tsenako (banque partenaire)
+- RG-B1 : Un seul compte Tsenako par commerce, ouvert depuis l'app ; la banque (via la passerelle) attribue le numéro.
+- RG-B2 : Solde = approvisionnements − paiements (table `operation_bancaire`, jamais modifiée) ; jamais négatif.
+  En comptabilité, c'est le compte 512 Banque.
+- RG-B3 : **Approvisionnement** : WTB (Wallet to Bank) depuis le mobile money du propriétaire, fait dans le menu de son
+  opérateur ; le BTW (Bank to Wallet) remet l'argent sur le mobile money. L'app ne fait **qu'informer** de ces deux
+  opérations (numéro de compte affiché). En simulation, un bouton « Simuler un WTB » crédite le compte : apport du
+  propriétaire, écriture 512 / 108 (journal BQ).
+- RG-B4 : **Paiement fournisseur** depuis le compte : au plus son solde, puis règles RG-A9 (réception ou acompte),
+  paiement `PF` en mode `BANQUE` (401 / 512). Les vérifications locales passent d'abord ; l'ordre est envoyé à la banque
+  en dernier, et un refus de la banque annule tout. Permission `GERER_BANQUE` (propriétaire, gérant).
+- RG-B5 : Simulation (`LiloSimulee`) : aucun argent réel, numéros et références (`LLAAMMJJxxxxxx`) générés sur le
+  téléphone, plafond de 50 000 000 Ar par opération. Le badge « Simulation » est affiché tant que la passerelle l'est.
+
 ### 5.9 Comptabilité
 - RG-K1 : **Partie double** : pour chaque écriture, Σ débit = Σ crédit.
 - RG-K2 : Les écritures sont **générées automatiquement** à partir des documents validés
@@ -430,7 +457,8 @@ AppContainer.kt   injection manuelle (TsenaApp.container) : instance unique de c
 MainActivity.kt   point d'entrée + réception des sauvegardes (WhatsApp)
 data/db/          TsenaDatabase, entity/, dao/
 domain/           rôles, permissions, Telephone, Nombres, RegleMetierException
-auth/ backup/ catalogue/ lieux/ stock/ appro/ vente/ credit/ finance/ compta/ rapports/ erreurs/ demo/
+auth/ backup/ banque/ catalogue/ lieux/ stock/ appro/ vente/ credit/ finance/ compta/ rapports/ erreurs/ demo/
+banque/           PasserelleBancaire (interface banque partenaire), LiloSimulee, BanqueRepository (compte Tsenako)
 ui/               écrans Compose + ViewModels (un dossier par écran) ; ui/home/Modules.kt = modules de l'accueil
 ```
 Architecture : les écrans n'accèdent jamais aux DAO ; ils passent par les repositories. Tout mouvement de stock
@@ -530,3 +558,7 @@ transaction Room que le document (RG-K9). Les tests miroir sont dans `app/src/te
   avec échéance, remboursements capital + intérêts (661), annulation d'une saisie, au coffre, en caisse ou hors caisse
   (RG-F1 à RG-F5) ; poste « Emprunts et dettes financières » au bilan, reste dû au tableau de bord. Schéma v1
   modifié directement (désinstaller l'app de test).
+- **Compte Tsenako** (code écrit, non compilé localement) : module « Compte Tsenako » sur l'accueil, compte bancaire du
+  commerce chez Lilo (simulée), information WTB / BTW, approvisionnement simulé (512 / 108), paiement des fournisseurs par
+  virement (401 / 512) lié au paiement `PF` (RG-B1 à RG-B5). Passerelle bancaire abstraite pour brancher plus tard une
+  vraie banque (banking as a platform). Schéma v1 modifié directement (désinstaller l'app de test).

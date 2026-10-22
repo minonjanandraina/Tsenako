@@ -27,6 +27,7 @@ import mg.tsena.ui.appro.FournisseurScreen
 import mg.tsena.ui.appro.FournisseursScreen
 import mg.tsena.ui.appro.LotApproScreen
 import mg.tsena.ui.appro.LotsApproScreen
+import mg.tsena.ui.banque.CompteTsenakoScreen
 import mg.tsena.ui.finance.CategoriesDepenseScreen
 import mg.tsena.ui.finance.CoffreScreen
 import mg.tsena.ui.finance.DepenseFormScreen
@@ -108,6 +109,7 @@ object Routes {
     const val CLIENT = "clients/{id}"
     const val DEPENSES = "depenses"
     const val COFFRE = "coffre"
+    const val BANQUE = "banque"
     const val DEPENSE_FORM = "depense-saisie"
     const val CATEGORIES_DEPENSES = "depenses/categories"
     const val FINANCEMENTS = "financements"
@@ -407,6 +409,7 @@ private fun EcransConnectes(etat: EtatApp.Connecte, onRestaurer: () -> Unit) {
         }
         composable(Routes.CATEGORIES_DEPENSES) { CategoriesDepenseScreen(onRetour = { nav.popBackStack() }) }
         composable(Routes.FINANCEMENTS) { FinancementsScreen(onRetour = { nav.popBackStack() }) }
+        composable(Routes.BANQUE) { CompteTsenakoScreen(onRetour = { nav.popBackStack() }) }
         composable(Routes.COMPTABILITE) {
             ComptabiliteScreen(
                 peutCloturer = etat.utilisateur.peut(Permission.GERER_COMPTABILITE),

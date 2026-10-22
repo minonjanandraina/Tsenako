@@ -22,6 +22,8 @@ enum class Permission {
     ANNULER_VENTE,
     /** Plan comptable (sous-comptes) et clôture des exercices : propriétaire uniquement */
     GERER_COMPTABILITE,
+    /** Compte Tsenako : ouverture, approvisionnement, paiements fournisseurs par la banque (RG-B4) */
+    GERER_BANQUE,
     /** Injections de capital, emprunts et remboursements (RG-F5) : propriétaire uniquement */
     GERER_FINANCEMENT,
     /** Paramètres du commerce (stock négatif…) : propriétaire uniquement */
@@ -41,6 +43,7 @@ enum class Role(val libelle: String, val permissions: Set<Permission>) {
             Permission.GERER_CAISSE,
             Permission.GERER_DEPENSES,
             Permission.GERER_COFFRE,
+            Permission.GERER_BANQUE,
             Permission.VOIR_COMPTABILITE,
             Permission.VOIR_TOUS_POINTS_VENTE,
             Permission.ACCORDER_REMISE,

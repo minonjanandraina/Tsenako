@@ -8,6 +8,7 @@ import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import mg.tsena.data.db.dao.BanqueDao
 import mg.tsena.data.db.dao.CaisseDao
 import mg.tsena.data.db.dao.CategorieDepenseDao
 import mg.tsena.data.db.dao.ClientDao
@@ -41,6 +42,7 @@ import mg.tsena.data.db.entity.CaisseEntity
 import mg.tsena.data.db.entity.CategorieDepenseEntity
 import mg.tsena.data.db.entity.ClientEntity
 import mg.tsena.data.db.entity.CommandeFournisseurEntity
+import mg.tsena.data.db.entity.CompteBancaireEntity
 import mg.tsena.data.db.entity.CommerceEntity
 import mg.tsena.data.db.entity.CompteEntity
 import mg.tsena.data.db.entity.ConversionUniteEntity
@@ -66,10 +68,12 @@ import mg.tsena.data.db.entity.ModePaiement
 import mg.tsena.data.db.entity.MouvementStockEntity
 import mg.tsena.data.db.entity.EtiquetageApproEntity
 import mg.tsena.data.db.entity.LotApproEntity
+import mg.tsena.data.db.entity.OperationBancaireEntity
 import mg.tsena.data.db.entity.OperationCaisseEntity
 import mg.tsena.data.db.entity.StatutLotAppro
 import mg.tsena.data.db.entity.OperationCoffreEntity
 import mg.tsena.data.db.entity.SourceFonds
+import mg.tsena.data.db.entity.TypeOperationBancaire
 import mg.tsena.data.db.entity.TypeOperationCoffre
 import mg.tsena.data.db.entity.PaiementFournisseurEntity
 import mg.tsena.data.db.entity.PaiementVenteEntity
@@ -198,6 +202,12 @@ class Converters {
     fun texteVersTypeOperationCoffre(texte: String): TypeOperationCoffre = TypeOperationCoffre.valueOf(texte)
 
     @TypeConverter
+    fun typeOperationBancaireVersTexte(valeur: TypeOperationBancaire): String = valeur.name
+
+    @TypeConverter
+    fun texteVersTypeOperationBancaire(texte: String): TypeOperationBancaire = TypeOperationBancaire.valueOf(texte)
+
+    @TypeConverter
     fun statutExerciceVersTexte(valeur: StatutExercice): String = valeur.name
 
     @TypeConverter
@@ -272,6 +282,8 @@ class Converters {
         LigneRetourFournisseurEntity::class,
         FinancementEntity::class,
         RemboursementEmpruntEntity::class,
+        CompteBancaireEntity::class,
+        OperationBancaireEntity::class,
         ExerciceEntity::class,
         CompteEntity::class,
         EcritureEntity::class,
@@ -308,6 +320,7 @@ abstract class TsenaDatabase : RoomDatabase() {
     abstract fun retourFournisseurDao(): RetourFournisseurDao
     abstract fun encaissementClientDao(): EncaissementClientDao
     abstract fun financementDao(): FinancementDao
+    abstract fun banqueDao(): BanqueDao
     abstract fun compteDao(): CompteDao
     abstract fun exerciceDao(): ExerciceDao
     abstract fun ecritureDao(): EcritureDao

@@ -20,6 +20,22 @@ class ReglesComptablesTest {
     }
 
     @Test
+    fun `approvisionnement du compte Tsenako en apport 512 108`() {
+        val lignes = ReglesComptables.approvisionnementBanque(200_000)
+        assertTrue(ReglesComptables.equilibree(lignes))
+        assertEquals(200_000L, lignes.first { it.compte == "512" }.debit)
+        assertEquals(200_000L, lignes.first { it.compte == "108" }.credit)
+    }
+
+    @Test
+    fun `paiement fournisseur par la banque credite 512`() {
+        val lignes = ReglesComptables.paiementFournisseur(80_000, ModePaiement.BANQUE, "f1")
+        assertTrue(ReglesComptables.equilibree(lignes))
+        assertEquals(80_000L, lignes.first { it.compte == "512" }.credit)
+        assertEquals("f1", lignes.first { it.compte == "401" }.tiersId)
+    }
+
+    @Test
     fun `vente gratuite sans ecriture`() {
         assertTrue(ReglesComptables.vente(0, emptyList(), null).isEmpty())
     }
